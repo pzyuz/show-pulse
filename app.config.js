@@ -12,6 +12,7 @@ export default {
       supportsTablet: true
     },
     android: {
+      package: "com.pzyuz.showpulse",
       adaptiveIcon: {
         backgroundColor: "#FFFFFF"
       }
@@ -19,7 +20,10 @@ export default {
     extra: {
       tmdbApiKey: process.env.TMDB_API_KEY,
       supabaseUrl: process.env.SUPABASE_URL,
-      supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+      eas: {
+        projectId: "5442abc4-3618-4e7b-9192-89181b7f96d5"
+      }
     }
   }
 };
