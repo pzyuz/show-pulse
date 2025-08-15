@@ -1,85 +1,137 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
+  StyleSheet,
   FlatList,
   TouchableOpacity,
-  StyleSheet,
+  Image,
   Alert,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { getShows, removeShow } from '../store/localShows';
 import { useAuth } from '../store/auth';
-import { Show } from '../types';
-import { RootStackParamList } from '../utils/navigation';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ShowLite } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MyShows'>;
-
-const GUEST_SHOWS_KEY = 'guest_shows';
-
-const MyShowsScreen: React.FC = () => {
-  const navigation = useNavigation<NavigationProp>();
-  const { isGuest, user } = useAuth();
-  const [shows, setShows] = useState<Show[]>([]);
+export default function MyShowsScreen() {
+  const [shows, setShows] = useState<ShowLite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const navigation = useNavigation();
+  const { isGuest } = useAuth();
 
-  useEffect(() => {
-    loadShows();
-  }, []);
-
-  const loadShows = async () => {
+  const loadShows = useCallback(async () => {
     try {
       if (isGuest) {
-        const guestShows = await AsyncStorage.getItem(GUEST_SHOWS_KEY);
-        if (guestShows) {
-          setShows(JSON.parse(guestShows));
-        }
+        const localShows = await getShows();
+        setShows(localShows);
       } else {
-        // TODO: Load shows from Supabase
-        console.log('Loading shows from Supabase (not implemented)');
+        // TODO: Load from Supabase
+        setShows([]);
       }
     } catch (error) {
       console.error('Error loading shows:', error);
+      Alert.alert('Error', 'Failed to load shows. Please try again.');
     } finally {
       setLoading(false);
     }
+  }, [isGuest]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadShows();
+    }, [loadShows])
+  );
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadShows();
+    setRefreshing(false);
   };
 
-  const handleShowPress = (show: Show) => {
-    navigation.navigate('ShowDetails', { showId: show.id });
+  const handleDeleteShow = (show: ShowLite) => {
+    Alert.alert(
+      'Remove Show',
+      `Are you sure you want to remove "${show.title}" from your list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeShow(show.tmdbId);
+              setShows(prev => prev.filter(s => s.tmdbId !== show.tmdbId));
+            } catch (error) {
+              Alert.alert('Error', 'Failed to remove show. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const handleAddShow = () => {
-    navigation.navigate('AddShow');
+  const handleShowPress = (show: ShowLite) => {
+    navigation.navigate('ShowDetails' as never, { tmdbId: show.tmdbId } as never);
   };
 
-  const handleSettings = () => {
-    navigation.navigate('Settings');
-  };
-
-  const renderShowItem = ({ item }: { item: Show }) => (
+  const renderShow = ({ item }: { item: ShowLite }) => (
     <TouchableOpacity
       style={styles.showItem}
       onPress={() => handleShowPress(item)}
+      onLongPress={() => handleDeleteShow(item)}
     >
+      <Image
+        source={{
+          uri: item.posterUrl || 'https://via.placeholder.com/200x300?text=No+Poster',
+        }}
+        style={styles.poster}
+        resizeMode="cover"
+      />
       <View style={styles.showInfo}>
-        <Text style={styles.showTitle}>{item.title}</Text>
-        <Text style={styles.showStatus}>Status: {item.status}</Text>
-        {item.nextAirDate && (
-          <Text style={styles.showDate}>Next: {item.nextAirDate}</Text>
+        <Text style={styles.showTitle} numberOfLines={2}>
+          {item.title}
+        </Text>
+        
+        {item.status && (
+          <View style={styles.statusContainer}>
+            <Text style={styles.statusText}>{item.status}</Text>
+          </View>
         )}
-        {item.lastAirDate && (
-          <Text style={styles.showDate}>Last: {item.lastAirDate}</Text>
+        
+        {item.nextAirDate && (
+          <Text style={styles.airDate}>
+            Next: {new Date(item.nextAirDate).toLocaleDateString()}
+          </Text>
+        )}
+        
+        {item.lastAirDate && !item.nextAirDate && (
+          <Text style={styles.airDate}>
+            Last: {new Date(item.lastAirDate).toLocaleDateString()}
+          </Text>
+        )}
+        
+        {item.network && (
+          <Text style={styles.network}>{item.network}</Text>
         )}
       </View>
+      
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={() => handleDeleteShow(item)}
+      >
+        <Text style={styles.deleteButtonText}>×</Text>
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <Text>Loading...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Loading your shows...</Text>
       </View>
     );
   }
@@ -87,44 +139,43 @@ const MyShowsScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.welcomeText}>
-          Welcome, {user?.name || 'User'}!
-        </Text>
-        <Text style={styles.modeText}>
-          {isGuest ? 'Guest Mode' : 'Authenticated Mode'}
-        </Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Settings' as never)}>
+          <Text style={styles.headerLink}>Settings</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>My Shows</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('AddShow' as never)}>
+          <Text style={styles.headerLink}>Add</Text>
+        </TouchableOpacity>
       </View>
 
       {shows.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No shows tracked yet</Text>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No shows yet</Text>
           <Text style={styles.emptySubtitle}>
             Start by adding your favorite TV shows
           </Text>
-          <TouchableOpacity style={styles.addButton} onPress={handleAddShow}>
-            <Text style={styles.addButtonText}>Add Your First Show</Text>
+          <TouchableOpacity
+            style={styles.emptyAddButton}
+            onPress={() => navigation.navigate('AddShow' as never)}
+          >
+            <Text style={styles.emptyAddButtonText}>Add Your First Show</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={shows}
-          renderItem={renderShowItem}
-          keyExtractor={(item) => item.id}
-          style={styles.list}
+          renderItem={renderShow}
+          keyExtractor={(item) => item.tmdbId.toString()}
+          style={styles.showsList}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
         />
       )}
-
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerButton} onPress={handleAddShow}>
-          <Text style={styles.footerButtonText}>Add Show</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerButton} onPress={handleSettings}>
-          <Text style={styles.footerButtonText}>Settings</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -132,99 +183,126 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
-    padding: 20,
-    backgroundColor: 'white',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
+    borderBottomColor: '#eee',
   },
-  welcomeText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
-  },
-  modeText: {
-    fontSize: 14,
-    color: '#666',
-    fontStyle: 'italic',
-  },
-  emptyState: {
+  headerTitle: { fontSize: 18, fontWeight: '700' },
+  headerLink: { fontSize: 16, fontWeight: '600', color: '#007AFF' },
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 24,
   },
-  addButton: {
-    backgroundColor: '#f4511e',
-    padding: 15,
-    borderRadius: 8,
+  emptyAddButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
   },
-  addButtonText: {
-    color: 'white',
+  emptyAddButtonText: {
+    color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
-  list: {
+  showsList: {
     flex: 1,
   },
   showItem: {
-    backgroundColor: 'white',
-    margin: 10,
-    padding: 15,
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginVertical: 8,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  poster: {
+    width: 80,
+    height: 120,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    marginRight: 16,
   },
   showInfo: {
     flex: 1,
+    justifyContent: 'space-between',
   },
   showTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#333',
-    marginBottom: 5,
+    marginBottom: 8,
+    lineHeight: 22,
   },
-  showStatus: {
+  statusContainer: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1976d2',
+  },
+  airDate: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 3,
+    marginBottom: 4,
   },
-  showDate: {
+  network: {
     fontSize: 12,
     color: '#999',
   },
-  footer: {
-    flexDirection: 'row',
-    padding: 20,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#ddd',
-  },
-  footerButton: {
-    flex: 1,
-    backgroundColor: '#f4511e',
-    padding: 15,
-    borderRadius: 8,
-    marginHorizontal: 5,
+  deleteButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ff3b30',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 8,
   },
-  footerButtonText: {
-    color: 'white',
-    fontSize: 16,
+  deleteButtonText: {
+    color: '#fff',
+    fontSize: 18,
     fontWeight: 'bold',
+    lineHeight: 24,
   },
 });
-
-export default MyShowsScreen;

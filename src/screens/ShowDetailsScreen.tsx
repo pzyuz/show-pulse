@@ -1,67 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  Image,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useQuery } from '@tanstack/react-query';
+import { getShowDetails } from '../services/tmdb';
+import { removeShow } from '../store/localShows';
 import { useAuth } from '../store/auth';
-import { Show } from '../types';
-import { RootStackParamList } from '../utils/navigation';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { TMDBShow } from '../types';
 
-type RoutePropType = RouteProp<RootStackParamList, 'ShowDetails'>;
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShowDetails'>;
+type RouteParams = {
+  tmdbId: number;
+};
 
-const GUEST_SHOWS_KEY = 'guest_shows';
-
-const ShowDetailsScreen: React.FC = () => {
-  const route = useRoute<RoutePropType>();
-  const navigation = useNavigation<NavigationProp>();
-  const { showId } = route.params;
+export default function ShowDetailsScreen() {
+  const route = useRoute();
+  const navigation = useNavigation();
+  const { tmdbId } = route.params as RouteParams;
   const { isGuest } = useAuth();
-  const [show, setShow] = useState<Show | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [removing, setRemoving] = useState(false);
 
-  useEffect(() => {
-    loadShowDetails();
-  }, [showId]);
-
-  const loadShowDetails = async () => {
-    try {
-      if (isGuest) {
-        const guestShows = await AsyncStorage.getItem(GUEST_SHOWS_KEY);
-        if (guestShows) {
-          const shows: Show[] = JSON.parse(guestShows);
-          const foundShow = shows.find(s => s.id === showId);
-          if (foundShow) {
-            setShow(foundShow);
-          } else {
-            Alert.alert('Error', 'Show not found');
-            navigation.goBack();
-          }
-        }
-      } else {
-        // TODO: Load show details from Supabase
-        console.log('Loading show details from Supabase (not implemented)');
-      }
-    } catch (error) {
-      console.error('Error loading show details:', error);
-      Alert.alert('Error', 'Failed to load show details');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: show, isLoading, error } = useQuery({
+    queryKey: ['showDetails', tmdbId],
+    queryFn: () => getShowDetails(tmdbId),
+    enabled: !!tmdbId,
+  });
 
   const handleRemoveShow = async () => {
     Alert.alert(
       'Remove Show',
-      'Are you sure you want to remove this show from your list?',
+      `Are you sure you want to remove "${show?.name}" from your list?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -69,22 +44,14 @@ const ShowDetailsScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              if (isGuest) {
-                const guestShows = await AsyncStorage.getItem(GUEST_SHOWS_KEY);
-                if (guestShows) {
-                  const shows: Show[] = JSON.parse(guestShows);
-                  const updatedShows = shows.filter(s => s.id !== showId);
-                  await AsyncStorage.setItem(GUEST_SHOWS_KEY, JSON.stringify(updatedShows));
-                  Alert.alert('Success', 'Show removed from your list');
-                  navigation.goBack();
-                }
-              } else {
-                // TODO: Remove show from Supabase
-                Alert.alert('Info', 'Supabase integration not implemented yet');
-              }
+              setRemoving(true);
+              await removeShow(tmdbId);
+              Alert.alert('Success', 'Show removed from your list');
+              navigation.goBack();
             } catch (error) {
-              console.error('Error removing show:', error);
-              Alert.alert('Error', 'Failed to remove show');
+              Alert.alert('Error', 'Failed to remove show. Please try again.');
+            } finally {
+              setRemoving(false);
             }
           },
         },
@@ -92,208 +59,353 @@ const ShowDetailsScreen: React.FC = () => {
     );
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <View style={styles.container}>
-        <Text>Loading...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Loading show details...</Text>
       </View>
     );
   }
 
-  if (!show) {
+  if (error || !show) {
     return (
-      <View style={styles.container}>
-        <Text>Show not found</Text>
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorTitle}>Failed to load show</Text>
+        <Text style={styles.errorText}>
+          {error?.message || 'Unable to fetch show details'}
+        </Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.retryButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'Unknown';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  const getStatusColor = (status?: string) => {
+    switch (status?.toLowerCase()) {
+      case 'returning series':
+        return '#4caf50';
+      case 'ended':
+        return '#f44336';
+      case 'canceled':
+        return '#ff9800';
+      default:
+        return '#9e9e9e';
+    }
+  };
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{show.title}</Text>
-        <View style={styles.statusContainer}>
-          <Text style={[styles.status, styles[`status_${show.status}`]]}>
-            {show.status.toUpperCase()}
-          </Text>
+        <Image
+          source={{
+            uri: show.poster_path
+              ? `https://image.tmdb.org/t/p/w500${show.poster_path}`
+              : 'https://via.placeholder.com/500x750?text=No+Poster',
+          }}
+          style={styles.poster}
+          resizeMode="cover"
+        />
+        
+        <View style={styles.headerInfo}>
+          <Text style={styles.title}>{show.name}</Text>
+          
+          {show.status && (
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(show.status) }]}>
+              <Text style={styles.statusText}>{show.status}</Text>
+            </View>
+          )}
+          
+          {show.first_air_date && (
+            <Text style={styles.airDate}>
+              First aired: {formatDate(show.first_air_date)}
+            </Text>
+          )}
+          
+          {show.networks && show.networks.length > 0 && (
+            <Text style={styles.network}>
+              Network: {show.networks[0].name}
+            </Text>
+          )}
+          
+          {show.number_of_seasons && (
+            <Text style={styles.seasons}>
+              {show.number_of_seasons} season{show.number_of_seasons !== 1 ? 's' : ''}
+            </Text>
+          )}
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Show Information</Text>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Network:</Text>
-          <Text style={styles.infoValue}>{show.network || 'Unknown'}</Text>
+      {show.overview && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Overview</Text>
+          <Text style={styles.overview}>{show.overview}</Text>
         </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Added:</Text>
-          <Text style={styles.infoValue}>
-            {new Date(show.createdAt).toLocaleDateString()}
-          </Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Last Updated:</Text>
-          <Text style={styles.infoValue}>
-            {new Date(show.updatedAt).toLocaleDateString()}
-          </Text>
-        </View>
-      </View>
+      )}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Air Dates</Text>
-        {show.nextAirDate && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Next Episode:</Text>
-            <Text style={styles.infoValue}>
-              {new Date(show.nextAirDate).toLocaleDateString()}
+        
+        {show.next_episode_to_air ? (
+          <View style={styles.dateItem}>
+            <Text style={styles.dateLabel}>Next Episode:</Text>
+            <Text style={styles.dateValue}>
+              {formatDate(show.next_episode_to_air.air_date)}
             </Text>
           </View>
-        )}
-        {show.lastAirDate && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Last Episode:</Text>
-            <Text style={styles.infoValue}>
-              {new Date(show.lastAirDate).toLocaleDateString()}
+        ) : null}
+        
+        {show.last_episode_to_air ? (
+          <View style={styles.dateItem}>
+            <Text style={styles.dateLabel}>Last Episode:</Text>
+            <Text style={styles.dateValue}>
+              {formatDate(show.last_episode_to_air.air_date)}
             </Text>
           </View>
-        )}
-        {!show.nextAirDate && !show.lastAirDate && (
-          <Text style={styles.noInfoText}>No air date information available</Text>
+        ) : null}
+        
+        {!show.next_episode_to_air && !show.last_episode_to_air && (
+          <Text style={styles.noDates}>No air dates available</Text>
         )}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Cast & Crew</Text>
-        <Text style={styles.placeholderText}>
-          Cast information will be displayed here when available
-        </Text>
-        <Text style={styles.placeholderSubtext}>
-          This feature is not yet implemented
-        </Text>
-      </View>
+      {show.genres && show.genres.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Genres</Text>
+          <View style={styles.genresContainer}>
+            {show.genres.map((genre) => (
+              <View key={genre.id} style={styles.genreTag}>
+                <Text style={styles.genreText}>{genre.name}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
-      <View style={styles.actions}>
+      {show.vote_average && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Rating</Text>
+          <View style={styles.ratingContainer}>
+            <Text style={styles.ratingText}>
+              ⭐ {show.vote_average.toFixed(1)}/10
+            </Text>
+            <Text style={styles.ratingCount}>
+              ({show.vote_count} votes)
+            </Text>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.actionsContainer}>
         <TouchableOpacity
-          style={styles.removeButton}
+          style={[styles.removeButton, removing && styles.removeButtonDisabled]}
           onPress={handleRemoveShow}
+          disabled={removing}
         >
-          <Text style={styles.removeButtonText}>Remove from My Shows</Text>
+          {removing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.removeButtonText}>Remove from My Shows</Text>
+          )}
         </TouchableOpacity>
       </View>
     </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    padding: 32,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   header: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    padding: 16,
+    marginBottom: 16,
+  },
+  poster: {
+    width: 120,
+    height: 180,
+    borderRadius: 12,
+    marginRight: 16,
+  },
+  headerInfo: {
+    flex: 1,
+    justifyContent: 'space-between',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 15,
+    marginBottom: 12,
+    lineHeight: 28,
   },
-  statusContainer: {
+  statusBadge: {
     alignSelf: 'flex-start',
-  },
-  status: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  statusText: {
+    color: '#fff',
     fontSize: 12,
-    fontWeight: 'bold',
-    overflow: 'hidden',
+    fontWeight: '600',
   },
-  status_returning: {
-    backgroundColor: '#d4edda',
-    color: '#155724',
+  airDate: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
   },
-  status_ended: {
-    backgroundColor: '#f8d7da',
-    color: '#721c24',
+  network: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
   },
-  status_cancelled: {
-    backgroundColor: '#fff3cd',
-    color: '#856404',
-  },
-  status_unknown: {
-    backgroundColor: '#e2e3e5',
-    color: '#383d41',
+  seasons: {
+    fontSize: 14,
+    color: '#666',
   },
   section: {
-    backgroundColor: 'white',
-    margin: 10,
-    padding: 20,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    backgroundColor: '#fff',
+    padding: 16,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#333',
-    marginBottom: 15,
+    marginBottom: 12,
   },
-  infoRow: {
+  overview: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 24,
+  },
+  dateItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#eee',
   },
-  infoLabel: {
+  dateLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  dateValue: {
     fontSize: 16,
     color: '#666',
+  },
+  noDates: {
+    fontSize: 16,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  genresContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  genreTag: {
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  genreText: {
+    color: '#1976d2',
+    fontSize: 14,
     fontWeight: '500',
   },
-  infoValue: {
-    fontSize: 16,
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ratingText: {
+    fontSize: 18,
+    fontWeight: '600',
     color: '#333',
-    fontWeight: '400',
   },
-  noInfoText: {
-    fontSize: 16,
-    color: '#999',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 20,
-  },
-  placeholderText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  placeholderSubtext: {
+  ratingCount: {
     fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    fontStyle: 'italic',
+    color: '#666',
   },
-  actions: {
-    padding: 20,
-    marginBottom: 20,
+  actionsContainer: {
+    backgroundColor: '#fff',
+    padding: 16,
+    marginBottom: 32,
   },
   removeButton: {
-    backgroundColor: '#dc3545',
-    padding: 15,
-    borderRadius: 8,
+    backgroundColor: '#ff3b30',
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
   },
+  removeButtonDisabled: {
+    opacity: 0.6,
+  },
   removeButtonText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });
-
-export default ShowDetailsScreen;

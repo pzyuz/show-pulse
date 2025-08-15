@@ -69,7 +69,9 @@ dist/
 web-build/
 
 # Environment variables
-.env
+# Ignore env files by default, but allow examples to be tracked
+.env*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
@@ -100,8 +102,7 @@ pids
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
+
 
 # next.js build output
 .next

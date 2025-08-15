@@ -1,282 +1,272 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
-  FlatList,
   StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Image,
   Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { searchShows, getShowDetails, TMDBSearchTVResult } from '../services/tmdb';
+import { upsertShow } from '../store/localShows';
 import { useAuth } from '../store/auth';
-import { TMDBShow, Show } from '../types';
-import { searchShows } from '../services/tmdb';
-import { RootStackParamList } from '../utils/navigation';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ShowLite } from '../types';
+// removed useFocusEffect-based debounce
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'AddShow'>;
-
-const GUEST_SHOWS_KEY = 'guest_shows';
-
-const AddShowScreen: React.FC = () => {
-  const navigation = useNavigation<NavigationProp>();
+export default function AddShowScreen() {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const navigation = useNavigation();
   const { isGuest } = useAuth();
-  const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<TMDBShow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
 
-  const handleSearch = async () => {
-    if (!query.trim()) {
-      Alert.alert('Error', 'Please enter a search term');
-      return;
-    }
+  // (Removed external key check; tmdb.ts throws a clear error if truly missing)
 
-    setLoading(true);
+  // Debounce search query on input change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim());
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const { data: searchResults, isLoading, error } = useQuery({
+    queryKey: ['searchShows', debouncedQuery],
+    queryFn: () => searchShows(debouncedQuery),
+    enabled: debouncedQuery.length > 1, // search for 2+ chars
+    retry: 0,
+  });
+
+  const handleAddShow = async (show: TMDBSearchTVResult['results'][0]) => {
     try {
-      const results = await searchShows(query.trim());
-      setSearchResults(results.results);
-    } catch (error) {
-      console.error('Search error:', error);
-      Alert.alert('Error', 'Failed to search shows. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddShow = async (tmdbShow: TMDBShow) => {
-    try {
-      const newShow: Show = {
-        id: `show_${Date.now()}`,
-        tmdbId: tmdbShow.id,
-        title: tmdbShow.name,
-        posterUrl: tmdbShow.poster_path 
-          ? `https://image.tmdb.org/t/p/w500${tmdbShow.poster_path}`
-          : undefined,
-        status: (tmdbShow.status as any) || 'unknown',
-        nextAirDate: tmdbShow.next_episode_to_air?.air_date,
-        lastAirDate: tmdbShow.last_episode_to_air?.air_date,
-        network: tmdbShow.networks?.[0]?.name,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
       if (isGuest) {
-        // Save to local storage
-        const existingShows = await AsyncStorage.getItem(GUEST_SHOWS_KEY);
-        const shows: Show[] = existingShows ? JSON.parse(existingShows) : [];
-        shows.push(newShow);
-        await AsyncStorage.setItem(GUEST_SHOWS_KEY, JSON.stringify(shows));
-        Alert.alert('Success', 'Show added to your list!');
+        const newShow: ShowLite = {
+          tmdbId: show.id,
+          title: show.name,
+          posterUrl: show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : undefined,
+          status: 'unknown',
+          nextAirDate: undefined,
+          lastAirDate: undefined,
+          network: undefined,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await upsertShow(newShow);
+        // Warm details cache in background so Details screen opens instantly
+        queryClient.prefetchQuery({
+          queryKey: ['showDetails', show.id],
+          queryFn: () => getShowDetails(show.id),
+        });
+        // go back to list
         navigation.goBack();
       } else {
-        // TODO: Save to Supabase
-        Alert.alert('Info', 'Supabase integration not implemented yet');
+        // auth path TBD
       }
-    } catch (error) {
-      console.error('Error adding show:', error);
+    } catch (e) {
       Alert.alert('Error', 'Failed to add show. Please try again.');
     }
   };
 
-  const renderSearchResult = ({ item }: { item: TMDBShow }) => (
+  const renderSearchResult = ({ item }: { item: TMDBSearchTVResult['results'][0] }) => (
     <TouchableOpacity
-      style={styles.resultItem}
+      style={styles.searchResult}
       onPress={() => handleAddShow(item)}
     >
+      <Image
+        source={{
+          uri: item.poster_path
+            ? `https://image.tmdb.org/t/p/w200${item.poster_path}`
+            : 'https://via.placeholder.com/200x300?text=No+Poster',
+        }}
+        style={styles.poster}
+        resizeMode="cover"
+      />
       <View style={styles.resultInfo}>
-        <Text style={styles.resultTitle}>{item.name}</Text>
-        <Text style={styles.resultStatus}>Status: {item.status}</Text>
-        {item.next_episode_to_air && (
-          <Text style={styles.resultDate}>
-            Next: {item.next_episode_to_air.air_date}
-          </Text>
-        )}
-        {item.networks && item.networks.length > 0 && (
-          <Text style={styles.resultNetwork}>
-            Network: {item.networks[0].name}
-          </Text>
-        )}
+        <Text style={styles.showTitle}>{item.name}</Text>
+        <Text style={styles.showDate}>
+          {item.first_air_date
+            ? `First aired: ${new Date(item.first_air_date).getFullYear()}`
+            : 'Release date unknown'}
+        </Text>
+        <Text style={styles.showOverview} numberOfLines={2}>
+          {item.overview || 'No description available'}
+        </Text>
       </View>
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => handleAddShow(item)}
-      >
-        <Text style={styles.addButtonText}>Add</Text>
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchSection}>
-        <Text style={styles.sectionTitle}>Search TV Shows</Text>
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Enter show name..."
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={handleSearch}
-          />
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={handleSearch}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="white" size="small" />
-            ) : (
-              <Text style={styles.searchButtonText}>Search</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
+      <Text style={styles.title}>Add New Show</Text>
+      
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search for TV shows..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        autoFocus
+      />
 
-      {searchResults.length > 0 && (
-        <View style={styles.resultsSection}>
-          <Text style={styles.resultsTitle}>
-            Found {searchResults.length} results
-          </Text>
-          <FlatList
-            data={searchResults}
-            renderItem={renderSearchResult}
-            keyExtractor={(item) => item.id.toString()}
-            style={styles.resultsList}
-          />
+      {/* (Key banner removed to avoid false alarms) */}
+
+      {isLoading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Searching...</Text>
         </View>
       )}
 
-      {!loading && searchResults.length === 0 && query && (
-        <View style={styles.noResults}>
-          <Text style={styles.noResultsText}>No shows found</Text>
-          <Text style={styles.noResultsSubtext}>
-            Try a different search term
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            {(error as Error).message || 'Failed to search shows.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              // re-trigger the query for the current debounced term
+              queryClient.invalidateQueries({ queryKey: ['searchShows', debouncedQuery] });
+            }}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {searchResults && searchResults.results.length === 0 && debouncedQuery.length > 1 && (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No shows found for "{debouncedQuery}"</Text>
+        </View>
+      )}
+
+      {searchResults && searchResults.results.length > 0 && (
+        <FlatList
+          data={searchResults.results}
+          renderItem={renderSearchResult}
+          keyExtractor={(item) => item.id.toString()}
+          style={styles.resultsList}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+
+      {!debouncedQuery && (
+        <View style={styles.placeholderContainer}>
+          <Text style={styles.placeholderText}>
+            Start typing to search for TV shows...
           </Text>
         </View>
       )}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
+    padding: 16,
   },
-  searchSection: {
-    padding: 20,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
-  },
-  sectionTitle: {
-    fontSize: 20,
+  title: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 15,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 20,
+    textAlign: 'center',
   },
   searchInput: {
-    flex: 1,
-    backgroundColor: '#f8f8f8',
-    padding: 15,
-    borderRadius: 8,
-    marginRight: 10,
     borderWidth: 1,
     borderColor: '#ddd',
-  },
-  searchButton: {
-    backgroundColor: '#f4511e',
-    padding: 15,
     borderRadius: 8,
-    minWidth: 80,
-    alignItems: 'center',
-  },
-  searchButtonText: {
-    color: 'white',
+    padding: 12,
     fontSize: 16,
-    fontWeight: 'bold',
+    marginBottom: 20,
   },
-  resultsSection: {
-    flex: 1,
-    padding: 20,
-  },
-  resultsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 15,
-  },
-  resultsList: {
-    flex: 1,
-  },
-  resultItem: {
-    backgroundColor: 'white',
-    marginBottom: 10,
-    padding: 15,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  resultInfo: {
-    flex: 1,
-  },
-  resultTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
-  },
-  resultStatus: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 3,
-  },
-  resultDate: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 2,
-  },
-  resultNetwork: {
-    fontSize: 12,
-    color: '#999',
-  },
-  addButton: {
-    backgroundColor: '#28a745',
-    padding: 10,
-    borderRadius: 6,
-    marginLeft: 10,
-  },
-  addButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  noResults: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
-  noResultsText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ff3b30',
     marginBottom: 10,
   },
-  noResultsSubtext: {
+  retryButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
   },
+  placeholderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    fontSize: 16,
+    color: '#999',
+    textAlign: 'center',
+  },
+  resultsList: {
+    flex: 1,
+  },
+  searchResult: {
+    flexDirection: 'row',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    alignItems: 'center',
+  },
+  poster: {
+    width: 60,
+    height: 90,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  resultInfo: {
+    flex: 1,
+  },
+  showTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  showDate: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  showOverview: {
+    fontSize: 14,
+    color: '#999',
+    lineHeight: 20,
+  },
 });
-
-export default AddShowScreen;

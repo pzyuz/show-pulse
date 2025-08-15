@@ -2,145 +2,228 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  StyleSheet,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../store/auth';
 
-const AuthScreen: React.FC = () => {
+export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
+  const navigation = useNavigation();
   const { signInAsGuest } = useAuth();
 
-  const handleSignIn = () => {
-    // Placeholder for Supabase authentication
-    Alert.alert('Sign In', 'Supabase authentication not implemented yet');
-  };
+  const handleSignIn = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
 
-  const handleSignUp = () => {
-    // Placeholder for Supabase sign up
-    Alert.alert('Sign Up', 'Supabase sign up not implemented yet');
+    setLoading(true);
+    try {
+      // TODO: Implement Supabase authentication
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      Alert.alert('Coming Soon', 'Supabase authentication will be available soon!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to sign in. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGuestMode = async () => {
+    setGuestLoading(true);
     try {
       await signInAsGuest();
+      // Navigation will be handled automatically by the auth context
     } catch (error) {
-      Alert.alert('Error', 'Failed to sign in as guest');
+      Alert.alert('Error', 'Failed to enter guest mode. Please try again.');
+    } finally {
+      setGuestLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Show Pulse</Text>
-      <Text style={styles.subtitle}>Track your favorite TV shows</Text>
-      
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-        
-        <TouchableOpacity style={styles.button} onPress={handleSignIn}>
-          <Text style={styles.buttonText}>Sign In</Text>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Show Pulse</Text>
+          <Text style={styles.subtitle}>Track your favorite TV shows</Text>
+        </View>
+
+        <View style={styles.form}>
+          <Text style={styles.formTitle}>Sign In</Text>
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          
+          <TouchableOpacity
+            style={[styles.signInButton, loading && styles.buttonDisabled]}
+            onPress={handleSignIn}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.signInButtonText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.guestButton, guestLoading && styles.buttonDisabled]}
+          onPress={handleGuestMode}
+          disabled={guestLoading}
+        >
+          {guestLoading ? (
+            <ActivityIndicator size="small" color="#007AFF" />
+          ) : (
+            <Text style={styles.guestButtonText}>Continue as Guest</Text>
+          )}
         </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.buttonSecondary} onPress={handleSignUp}>
-          <Text style={styles.buttonSecondaryText}>Sign Up</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.guestButton} onPress={handleGuestMode}>
-          <Text style={styles.guestButtonText}>Continue as Guest</Text>
-        </TouchableOpacity>
+
+        <View style={styles.info}>
+          <Text style={styles.infoText}>
+            Guest mode allows you to try the app without creating an account.
+          </Text>
+          <Text style={styles.infoText}>
+            Your data will be stored locally on your device.
+          </Text>
+        </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
     backgroundColor: '#f5f5f5',
   },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 32,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 48,
+  },
   title: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: 'bold',
-    color: '#f4511e',
-    marginBottom: 10,
+    color: '#333',
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#666',
-    marginBottom: 40,
     textAlign: 'center',
   },
   form: {
-    width: '100%',
-    maxWidth: 300,
+    marginBottom: 32,
+  },
+  formTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 24,
+    textAlign: 'center',
   },
   input: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
+    backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    marginBottom: 16,
   },
-  button: {
-    backgroundColor: '#f4511e',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
+  signInButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  signInButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
   },
-  buttonSecondary: {
-    backgroundColor: 'transparent',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
+  divider: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#f4511e',
+    marginBottom: 32,
   },
-  buttonSecondaryText: {
-    color: '#f4511e',
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#ddd',
+  },
+  dividerText: {
+    marginHorizontal: 16,
     fontSize: 16,
-    fontWeight: 'bold',
+    color: '#999',
   },
   guestButton: {
-    backgroundColor: '#28a745',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 20,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#007AFF',
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
+    marginBottom: 32,
   },
   guestButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: '#007AFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  info: {
+    alignItems: 'center',
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 8,
   },
 });
-
-export default AuthScreen;

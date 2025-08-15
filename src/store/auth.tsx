@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
 
@@ -12,8 +12,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const GUEST_USER_KEY = 'guest_user';
-const GUEST_SHOWS_KEY = 'guest_shows';
+const GUEST_USER_KEY = '@sp:guest_user';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -23,29 +22,25 @@ export const useAuth = () => {
   return context;
 };
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadGuestUser();
+    loadStoredUser();
   }, []);
 
-  const loadGuestUser = async () => {
+  const loadStoredUser = async () => {
     try {
-      const guestUser = await AsyncStorage.getItem(GUEST_USER_KEY);
-      if (guestUser) {
-        const parsedUser = JSON.parse(guestUser);
+      const storedUser = await AsyncStorage.getItem(GUEST_USER_KEY);
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
         setIsGuest(true);
       }
     } catch (error) {
-      console.error('Error loading guest user:', error);
+      console.error('Error loading stored user:', error);
     } finally {
       setIsLoading(false);
     }
@@ -56,8 +51,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const guestUser: User = {
         id: 'guest',
         name: 'Guest User',
+        email: 'guest@showpulse.app',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
-      
+
       await AsyncStorage.setItem(GUEST_USER_KEY, JSON.stringify(guestUser));
       setUser(guestUser);
       setIsGuest(true);
@@ -69,13 +67,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signOut = async () => {
     try {
-      await AsyncStorage.removeItem(GUEST_USER_KEY);
-      await AsyncStorage.removeItem(GUEST_SHOWS_KEY);
+      if (isGuest) {
+        // Clear all guest data
+        await AsyncStorage.multiRemove([
+          GUEST_USER_KEY,
+          '@sp:shows',
+          '@sp:guest_shows'
+        ]);
+      }
+      
       setUser(null);
       setIsGuest(false);
     } catch (error) {
       console.error('Error signing out:', error);
-      throw error;
+      // Even if clearing storage fails, reset the state
+      setUser(null);
+      setIsGuest(false);
     }
   };
 
@@ -87,9 +94,5 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signOut,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

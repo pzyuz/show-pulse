@@ -53,3 +53,13 @@ export interface TMDBSearchResult {
   total_results: number;
   total_pages: number;
 }
+
+export interface ShowLite {
+  tmdbId: number;
+  title: string;
+  posterUrl?: string;
+  status?: string;
+  nextAirDate?: string;
+  lastAirDate?: string;
+  network?: string;
+}

@@ -3,92 +3,102 @@ import {
   View,
   Text,
   StyleSheet,
-  Switch,
   TouchableOpacity,
   Alert,
   ScrollView,
+  Switch,
+  ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../store/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getShows } from '../store/localShows';
+import { ShowLite } from '../types';
 
-const SettingsScreen: React.FC = () => {
+export default function SettingsScreen() {
+  const navigation = useNavigation();
   const { user, isGuest, signOut } = useAuth();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(false);
-
-  const handleNotificationToggle = (value: boolean) => {
-    setNotificationsEnabled(value);
-    // TODO: Implement notification settings persistence
-    Alert.alert(
-      'Notifications',
-      `Push notifications ${value ? 'enabled' : 'disabled'}`,
-      [{ text: 'OK' }]
-    );
-  };
-
-  const handleEmailNotificationToggle = (value: boolean) => {
-    setEmailNotifications(value);
-    // TODO: Implement email notification settings persistence
-    Alert.alert(
-      'Email Notifications',
-      `Email notifications ${value ? 'enabled' : 'disabled'}`,
-      [{ text: 'OK' }]
-    );
-  };
+  const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleExportData = async () => {
-    try {
-      if (isGuest) {
-        const guestShows = await AsyncStorage.getItem('guest_shows');
-        const guestUser = await AsyncStorage.getItem('guest_user');
-        
-        const exportData = {
-          user: guestUser ? JSON.parse(guestUser) : null,
-          shows: guestShows ? JSON.parse(guestShows) : [],
-          exportedAt: new Date().toISOString(),
-        };
+    if (!isGuest) {
+      Alert.alert('Coming Soon', 'Data export will be available for authenticated users soon!');
+      return;
+    }
 
-        // In a real app, you'd save this to a file or share it
-        console.log('Export data:', JSON.stringify(exportData, null, 2));
-        Alert.alert(
-          'Data Exported',
-          'Your data has been exported to the console. In a real app, this would be saved to a file.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        // TODO: Export data from Supabase
-        Alert.alert('Info', 'Supabase export not implemented yet');
-      }
+    try {
+      setExporting(true);
+      const shows = await getShows();
+      
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        user: user,
+        shows: shows,
+        totalShows: shows.length,
+      };
+
+      // In a real app, you might want to share this data or save to file
+      console.log('=== EXPORTED DATA ===');
+      console.log(JSON.stringify(exportData, null, 2));
+      console.log('=====================');
+
+      Alert.alert(
+        'Data Exported',
+        `Successfully exported ${shows.length} shows to console.\n\nCheck your console/logs to see the exported data.`,
+        [{ text: 'OK' }]
+      );
     } catch (error) {
-      console.error('Export error:', error);
-      Alert.alert('Error', 'Failed to export data');
+      Alert.alert('Export Failed', 'Unable to export your data. Please try again.');
+    } finally {
+      setExporting(false);
     }
   };
 
-  const handleDeleteData = async () => {
+  const handleDeleteAllData = async () => {
+    if (!isGuest) {
+      Alert.alert('Coming Soon', 'Data deletion will be available for authenticated users soon!');
+      return;
+    }
+
     Alert.alert(
       'Delete All Data',
-      'This will permanently delete all your data. This action cannot be undone.',
+      'This will permanently delete all your shows and settings. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Delete All',
           style: 'destructive',
           onPress: async () => {
             try {
-              if (isGuest) {
-                await AsyncStorage.removeItem('guest_shows');
-                await AsyncStorage.removeItem('guest_user');
-                Alert.alert('Success', 'All data deleted');
-                // Sign out after deleting data
-                await signOut();
-              } else {
-                // TODO: Delete data from Supabase
-                Alert.alert('Info', 'Supabase delete not implemented yet');
-              }
+              setDeleting(true);
+              
+              // Clear AsyncStorage for guest mode
+              const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+              await AsyncStorage.multiRemove([
+                '@sp:shows',
+                '@sp:guest_user',
+                '@sp:guest_shows'
+              ]);
+
+              Alert.alert(
+                'Data Deleted',
+                'All your data has been successfully deleted.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Sign out and go back to auth
+                      signOut();
+                    }
+                  }
+                ]
+              );
             } catch (error) {
-              console.error('Delete error:', error);
-              Alert.alert('Error', 'Failed to delete data');
+              Alert.alert('Delete Failed', 'Unable to delete your data. Please try again.');
+            } finally {
+              setDeleting(false);
             }
           },
         },
@@ -96,7 +106,7 @@ const SettingsScreen: React.FC = () => {
     );
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -105,13 +115,8 @@ const SettingsScreen: React.FC = () => {
         {
           text: 'Sign Out',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut();
-            } catch (error) {
-              console.error('Sign out error:', error);
-              Alert.alert('Error', 'Failed to sign out');
-            }
+          onPress: () => {
+            signOut();
           },
         },
       ]
@@ -120,186 +125,217 @@ const SettingsScreen: React.FC = () => {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>User Information</Text>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Name:</Text>
-          <Text style={styles.infoValue}>{user?.name || 'Unknown'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Mode:</Text>
-          <Text style={styles.infoValue}>
-            {isGuest ? 'Guest Mode' : 'Authenticated Mode'}
-          </Text>
-        </View>
-        {user?.email && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Email:</Text>
-            <Text style={styles.infoValue}>{user.email}</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Push Notifications</Text>
-          <Switch
-            value={notificationsEnabled}
-            onValueChange={handleNotificationToggle}
-            trackColor={{ false: '#767577', true: '#f4511e' }}
-            thumbColor={notificationsEnabled ? '#fff' : '#f4f3f4'}
-          />
-        </View>
-        <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Email Notifications</Text>
-          <Switch
-            value={emailNotifications}
-            onValueChange={handleEmailNotificationToggle}
-            trackColor={{ false: '#767577', true: '#f4511e' }}
-            thumbColor={emailNotifications ? '#fff' : '#f4f3f4'}
-          />
-        </View>
-        <Text style={styles.settingNote}>
-          Note: Notification settings are not yet persisted
+      <View style={styles.header}>
+        <Text style={styles.title}>Settings</Text>
+        <Text style={styles.subtitle}>
+          {isGuest ? 'Guest Mode' : 'Authenticated User'}
         </Text>
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Notifications</Text>
+        
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Push Notifications</Text>
+            <Text style={styles.settingDescription}>
+              Get notified about show updates and new episodes
+            </Text>
+          </View>
+          <Switch
+            value={notificationsEnabled}
+            onValueChange={setNotificationsEnabled}
+            trackColor={{ false: '#e0e0e0', true: '#007AFF' }}
+            thumbColor={notificationsEnabled ? '#fff' : '#f4f3f4'}
+          />
+        </View>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Email Notifications</Text>
+            <Text style={styles.settingDescription}>
+              Receive email updates about your shows
+            </Text>
+          </View>
+          <Switch
+            value={emailNotifications}
+            onValueChange={setEmailNotifications}
+            trackColor={{ false: '#e0e0e0', true: '#007AFF' }}
+            thumbColor={emailNotifications ? '#fff' : '#f4f3f4'}
+          />
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Data Management</Text>
-        <TouchableOpacity style={styles.button} onPress={handleExportData}>
-          <Text style={styles.buttonText}>Export My Data</Text>
-        </TouchableOpacity>
+        
         <TouchableOpacity
-          style={[styles.button, styles.dangerButton]}
-          onPress={handleDeleteData}
+          style={[styles.actionButton, styles.exportButton]}
+          onPress={handleExportData}
+          disabled={exporting}
         >
-          <Text style={styles.dangerButtonText}>Delete All Data</Text>
+          {exporting ? (
+            <ActivityIndicator size="small" color="#007AFF" />
+          ) : (
+            <Text style={styles.exportButtonText}>📤 Export My Data</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, styles.deleteButton]}
+          onPress={handleDeleteAllData}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.deleteButtonText}>🗑️ Delete All Data</Text>
+          )}
         </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
+        
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>User ID</Text>
+            <Text style={styles.settingValue}>{user?.id || 'N/A'}</Text>
+          </View>
+        </View>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Name</Text>
+            <Text style={styles.settingValue}>{user?.name || 'N/A'}</Text>
+          </View>
+        </View>
+
         <TouchableOpacity
-          style={[styles.button, styles.signOutButton]}
+          style={[styles.actionButton, styles.signOutButton]}
           onPress={handleSignOut}
         >
           <Text style={styles.signOutButtonText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Show Pulse v1.0.0
-        </Text>
-        <Text style={styles.footerSubtext}>
-          Built with React Native & Expo
-        </Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>About</Text>
+        
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>App Version</Text>
+            <Text style={styles.settingValue}>1.0.0</Text>
+          </View>
+        </View>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Build</Text>
+            <Text style={styles.settingValue}>Development</Text>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  section: {
-    backgroundColor: 'white',
-    margin: 10,
+  header: {
+    backgroundColor: '#fff',
     padding: 20,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  section: {
+    backgroundColor: '#fff',
+    marginTop: 16,
+    padding: 20,
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#333',
-    marginBottom: 20,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  infoLabel: {
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '400',
+    marginBottom: 16,
   },
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 15,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
+  settingInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
   settingLabel: {
     fontSize: 16,
+    fontWeight: '500',
     color: '#333',
+    marginBottom: 4,
+  },
+  settingDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  settingValue: {
+    fontSize: 16,
+    color: '#007AFF',
     fontWeight: '500',
   },
-  settingNote: {
-    fontSize: 14,
-    color: '#999',
-    fontStyle: 'italic',
-    marginTop: 10,
-    textAlign: 'center',
-  },
-  button: {
-    backgroundColor: '#f4511e',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
+  actionButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
     alignItems: 'center',
+    marginBottom: 12,
   },
-  buttonText: {
-    color: 'white',
+  exportButton: {
+    backgroundColor: '#e3f2fd',
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  exportButtonText: {
+    color: '#007AFF',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
-  dangerButton: {
-    backgroundColor: '#dc3545',
+  deleteButton: {
+    backgroundColor: '#ffebee',
+    borderWidth: 1,
+    borderColor: '#f44336',
   },
-  dangerButtonText: {
-    color: 'white',
+  deleteButtonText: {
+    color: '#f44336',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   signOutButton: {
-    backgroundColor: '#6c757d',
+    backgroundColor: '#fff3e0',
+    borderWidth: 1,
+    borderColor: '#ff9800',
   },
   signOutButtonText: {
-    color: 'white',
+    color: '#ff9800',
     fontSize: 16,
-    fontWeight: 'bold',
-  },
-  footer: {
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  footerText: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 5,
-  },
-  footerSubtext: {
-    fontSize: 14,
-    color: '#999',
-    fontStyle: 'italic',
+    fontWeight: '600',
   },
 });
-
-export default SettingsScreen;
