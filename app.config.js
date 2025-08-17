@@ -13,7 +13,7 @@ if (!process.env.EXPO_PUBLIC_TMDB_KEY) {
 module.exports = {
   expo: {
     name: "Show Pulse",
-    slug: "show-pulse",
+    slug: "showpulse",
     version: "1.0.0",
     orientation: "portrait",
     userInterfaceStyle: "light",
