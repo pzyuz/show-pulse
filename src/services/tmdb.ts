@@ -3,16 +3,19 @@
 import Constants from 'expo-constants';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
-// Self-contained, minimal, and robust key reader (no external helpers):
+// Robust key reader with fallbacks for all build types:
 function readTmdbKey(): string {
-  // 1) Expo inlines EXPO_PUBLIC_* in dev/preview
+  // 1) process.env.EXPO_PUBLIC_TMDB_KEY for Expo Go and local development
   const fromEnv = process.env.EXPO_PUBLIC_TMDB_KEY;
-  // 2) Fallback to extra in dev/Expo Go/classic manifest
-  const fromExtra =
-    (Constants as any)?.expoConfig?.extra?.tmdbKey ??
-    (Constants as any)?.manifest?.extra?.tmdbKey;
+  // 2) extra.tmdbApiKey from app.config.js for standalone builds / EAS
+  const extra =
+    (Constants as any)?.expoConfig?.extra ||
+    (Constants as any)?.manifest?.extra;   // fallback for standalone builds
+  const fromExtra = extra?.tmdbApiKey;
   
-  const key = String(fromEnv || fromExtra || '').trim();
+  // env takes priority, fallback to extra
+  const TMDB_KEY = fromEnv || fromExtra;
+  const key = String(TMDB_KEY || '').trim();
   console.log(`🔑 TMDB key loaded: ${key ? 'present' : 'missing'}`);
   return key;
 }
@@ -20,7 +23,7 @@ function readTmdbKey(): string {
 function ensureKey(k: string) {
   if (!k) {
     console.error('❌ TMDB key missing at runtime');
-    throw new Error('TMDB API key is not configured. Please check your environment setup.');
+    throw new Error('TMDB API key is not configured. Set TMDB_API_KEY as an EAS secret or in .env for local dev.');
   }
 }
 
