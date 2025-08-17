@@ -13,7 +13,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { searchShows, getShowDetails, TMDBSearchTVResult } from '../services/tmdb';
-import { upsertShow } from '../store/localShows';
+import { upsertShow, updateShowPartial } from '../store/localShows';
 import { useAuth } from '../store/auth';
 import { ShowLite } from '../types';
 // removed useFocusEffect-based debounce
@@ -57,6 +57,25 @@ export default function AddShowScreen() {
           updatedAt: new Date().toISOString(),
         };
         await upsertShow(newShow);
+        
+        // Fetch full details and persist enriched record in background
+        // This work is done in background: do not block navigation/goBack
+        (async () => {
+          try {
+            const details = await getShowDetails(show.id);
+            const patch: Partial<ShowLite> = {
+              status: details.status || undefined,
+              nextAirDate: details.next_episode_to_air?.air_date || undefined,
+              lastAirDate: details.last_episode_to_air?.air_date || undefined,
+              network: details.networks?.[0]?.name || undefined,
+            };
+            await updateShowPartial(show.id, patch);
+          } catch (error) {
+            // Silently ignore network errors to avoid UI disruption
+            console.warn('Failed to enrich show data:', error);
+          }
+        })();
+        
         // Warm details cache in background so Details screen opens instantly
         queryClient.prefetchQuery({
           queryKey: ['showDetails', show.id],

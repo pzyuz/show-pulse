@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { getShows, removeShow } from '../store/localShows';
+import { getShows, removeShow, hydrateMissingFields } from '../store/localShows';
 import { useAuth } from '../store/auth';
 import { ShowLite } from '../types';
 
@@ -27,6 +27,23 @@ export default function MyShowsScreen() {
       if (isGuest) {
         const localShows = await getShows();
         setShows(localShows);
+        
+        // Hydrate missing fields in background if any item lacks status and both air dates
+        const needsHydration = localShows.some(show => 
+          (!show.status || show.status.toLowerCase() === 'unknown') && 
+          !show.nextAirDate && 
+          !show.lastAirDate
+        );
+        
+        if (needsHydration) {
+          // Run hydration in background, then reload to show updates
+          hydrateMissingFields(localShows).then(() => {
+            // Reload the list from storage so users see updates
+            getShows().then(updatedShows => {
+              setShows(updatedShows);
+            }).catch(console.warn);
+          }).catch(console.warn);
+        }
       } else {
         // TODO: Load from Supabase
         setShows([]);
@@ -95,24 +112,24 @@ export default function MyShowsScreen() {
           {item.title}
         </Text>
         
-        {item.status && (
+        {/* Only render status pill if status is truthy and not "unknown" (case-insensitive) */}
+        {item.status && item.status.toLowerCase() !== 'unknown' && (
           <View style={styles.statusContainer}>
             <Text style={styles.statusText}>{item.status}</Text>
           </View>
         )}
         
-        {item.nextAirDate && (
+        {/* Show one compact line: Next air date takes priority, then last air date */}
+        {(item.nextAirDate || item.lastAirDate) && (
           <Text style={styles.airDate}>
-            Next: {new Date(item.nextAirDate).toLocaleDateString()}
+            {item.nextAirDate 
+              ? `Next: ${new Date(item.nextAirDate).toLocaleDateString()}`
+              : `Last: ${new Date(item.lastAirDate!).toLocaleDateString()}`
+            }
           </Text>
         )}
         
-        {item.lastAirDate && !item.nextAirDate && (
-          <Text style={styles.airDate}>
-            Last: {new Date(item.lastAirDate).toLocaleDateString()}
-          </Text>
-        )}
-        
+        {/* Show network as small secondary text under the date line */}
         {item.network && (
           <Text style={styles.network}>{item.network}</Text>
         )}

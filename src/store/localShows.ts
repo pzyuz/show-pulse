@@ -59,3 +59,62 @@ export const upsertShow = async (show: ShowLite): Promise<void> => {
     throw error;
   }
 };
+
+export const updateShowPartial = async (tmdbId: number, patch: Partial<ShowLite>): Promise<void> => {
+  try {
+    const shows = await getShows();
+    const existingIndex = shows.findIndex(s => s.tmdbId === tmdbId);
+    
+    if (existingIndex !== -1) {
+      shows[existingIndex] = { ...shows[existingIndex], ...patch };
+      await AsyncStorage.setItem(SHOWS_STORAGE_KEY, JSON.stringify(shows));
+    }
+  } catch (error) {
+    console.error('Error updating show in storage:', error);
+    throw error;
+  }
+};
+
+export const hydrateMissingFields = async (shows: ShowLite[]): Promise<void> => {
+  try {
+    const { getShowDetails } = await import('../services/tmdb');
+    
+    // Process shows that need hydration (missing status and both air dates)
+    const showsToHydrate = shows.filter(show => 
+      (!show.status || show.status.toLowerCase() === 'unknown') && 
+      !show.nextAirDate && 
+      !show.lastAirDate
+    );
+    
+    if (showsToHydrate.length === 0) return;
+    
+    // Process with small concurrency to avoid overwhelming the API
+    const concurrency = 2;
+    for (let i = 0; i < showsToHydrate.length; i += concurrency) {
+      const batch = showsToHydrate.slice(i, i + concurrency);
+      
+      await Promise.allSettled(
+        batch.map(async (show) => {
+          try {
+            const details = await getShowDetails(show.tmdbId);
+            
+            const patch: Partial<ShowLite> = {
+              status: details.status || undefined,
+              nextAirDate: details.next_episode_to_air?.air_date || undefined,
+              lastAirDate: details.last_episode_to_air?.air_date || undefined,
+              network: details.networks?.[0]?.name || undefined,
+            };
+            
+            await updateShowPartial(show.tmdbId, patch);
+          } catch (error) {
+            // Swallow errors to avoid UI disruption
+            console.warn(`Failed to hydrate show ${show.tmdbId}:`, error);
+          }
+        })
+      );
+    }
+  } catch (error) {
+    // Swallow errors to avoid UI disruption
+    console.warn('Error during show hydration:', error);
+  }
+};
