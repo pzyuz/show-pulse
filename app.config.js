@@ -31,7 +31,12 @@ module.exports = {
     },
     // Ensure the TMDB key is exposed to the app at runtime
     extra: {
-      tmdbKey: process.env.EXPO_PUBLIC_TMDB_KEY,
+      tmdbApiKey: process.env.TMDB_API_KEY,
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+      eas: {
+        projectId: "5442abc4-3618-4e7b-9192-89181b7f96d5"
+      }
     },
   }
 };
