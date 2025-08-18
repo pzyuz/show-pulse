@@ -36,35 +36,36 @@ export const NavigationContainerWrapper: React.FC = () => {
           headerTitleStyle: {
             fontWeight: 'bold',
           },
+          headerTitle: ''
         }}
       >
         {!user ? (
           <Stack.Screen 
             name="Auth" 
             component={AuthScreen} 
-            options={{ title: 'Show Pulse' }}
+            options={{ headerTitle: '' }}
           />
         ) : (
           <>
             <Stack.Screen 
               name="MyShows" 
               component={MyShowsScreen} 
-              options={{ title: 'My Shows' }}
+              options={{ headerTitle: '' }}
             />
             <Stack.Screen 
               name="AddShow" 
               component={AddShowScreen} 
-              options={{ title: 'Add Show' }}
+              options={{ headerTitle: '' }}
             />
             <Stack.Screen 
               name="ShowDetails" 
               component={ShowDetailsScreen} 
-              options={{ title: 'Show Details' }}
+              options={{ headerTitle: '' }}
             />
             <Stack.Screen 
               name="Settings" 
               component={SettingsScreen} 
-              options={{ title: 'Settings' }}
+              options={{ headerTitle: '' }}
             />
           </>
         )}
