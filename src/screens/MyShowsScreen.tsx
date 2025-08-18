@@ -10,6 +10,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getShows, removeShow, hydrateMissingFields } from '../store/localShows';
 import { useAuth } from '../store/auth';
@@ -94,54 +95,59 @@ export default function MyShowsScreen() {
     navigation.navigate('ShowDetails' as never, { tmdbId: show.tmdbId } as never);
   };
 
-  const renderShow = ({ item }: { item: ShowLite }) => (
+  const renderRightActions = (onDelete: () => void) => (
     <TouchableOpacity
-      style={styles.showItem}
-      onPress={() => handleShowPress(item)}
-      onLongPress={() => handleDeleteShow(item)}
+      accessibilityLabel="Delete show"
+      onPress={onDelete}
+      style={styles.rightAction}
+      activeOpacity={0.8}
     >
-      <Image
-        source={{
-          uri: item.posterUrl || 'https://via.placeholder.com/200x300?text=No+Poster',
-        }}
-        style={styles.poster}
-        resizeMode="cover"
-      />
-      <View style={styles.showInfo}>
-        <Text style={styles.showTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-        
-        {/* Only render status pill if status is truthy and not "unknown" (case-insensitive) */}
-        {item.status && item.status.toLowerCase() !== 'unknown' && (
-          <View style={styles.statusContainer}>
-            <Text style={styles.statusText}>{item.status}</Text>
-          </View>
-        )}
-        
-        {/* Show one compact line: Next air date takes priority, then last air date */}
-        {(item.nextAirDate || item.lastAirDate) && (
-          <Text style={styles.airDate}>
-            {item.nextAirDate 
-              ? `Next: ${new Date(item.nextAirDate).toLocaleDateString()}`
-              : `Last: ${new Date(item.lastAirDate!).toLocaleDateString()}`
-            }
-          </Text>
-        )}
-        
-        {/* Show network as small secondary text under the date line */}
-        {item.network && (
-          <Text style={styles.network}>{item.network}</Text>
-        )}
-      </View>
-      
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDeleteShow(item)}
-      >
-        <Text style={styles.deleteButtonText}>×</Text>
-      </TouchableOpacity>
+      <Text style={styles.rightActionText}>Delete</Text>
     </TouchableOpacity>
+  );
+
+  const renderShow = ({ item }: { item: ShowLite }) => (
+    <Swipeable renderRightActions={() => renderRightActions(() => handleDeleteShow(item))}>
+      <TouchableOpacity
+        style={styles.showItem}
+        onPress={() => handleShowPress(item)}
+      >
+        <Image
+          source={{
+            uri: item.posterUrl || 'https://via.placeholder.com/200x300?text=No+Poster',
+          }}
+          style={styles.poster}
+          resizeMode="cover"
+        />
+        <View style={styles.showInfo}>
+          <Text style={styles.showTitle} numberOfLines={2}>
+            {item.title}
+          </Text>
+          
+          {/* Only render status pill if status is truthy and not "unknown" (case-insensitive) */}
+          {item.status && item.status.toLowerCase() !== 'unknown' && (
+            <View style={styles.statusContainer}>
+              <Text style={styles.statusText}>{item.status}</Text>
+            </View>
+          )}
+          
+          {/* Show one compact line: Next air date takes priority, then last air date */}
+          {(item.nextAirDate || item.lastAirDate) && (
+            <Text style={styles.airDate}>
+              {item.nextAirDate 
+                ? `Next: ${new Date(item.nextAirDate).toLocaleDateString()}`
+                : `Last: ${new Date(item.lastAirDate!).toLocaleDateString()}`
+              }
+            </Text>
+          )}
+          
+          {/* Show network as small secondary text under the date line */}
+          {item.network && (
+            <Text style={styles.network}>{item.network}</Text>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Swipeable>
   );
 
   if (loading) {
@@ -306,20 +312,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
   },
-  deleteButton: {
-    alignSelf: 'flex-start',
+  rightAction: {
     backgroundColor: '#ff3b30',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
+    paddingHorizontal: 20,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 12,
   },
-  deleteButtonText: {
+  rightActionText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    lineHeight: 24,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
