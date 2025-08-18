@@ -106,49 +106,69 @@ export default function MyShowsScreen() {
     </TouchableOpacity>
   );
 
-  const renderShow = ({ item }: { item: ShowLite }) => (
-    <Swipeable renderRightActions={() => renderRightActions(() => handleDeleteShow(item))}>
-      <TouchableOpacity
-        style={styles.showItem}
-        onPress={() => handleShowPress(item)}
-      >
-        <Image
-          source={{
-            uri: item.posterUrl || 'https://via.placeholder.com/200x300?text=No+Poster',
-          }}
-          style={styles.poster}
-          resizeMode="cover"
-        />
-        <View style={styles.showInfo}>
-          <Text style={styles.showTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          
-          {/* Only render status pill if status is truthy and not "unknown" (case-insensitive) */}
-          {item.status && item.status.toLowerCase() !== 'unknown' && (
-            <View style={styles.statusContainer}>
-              <Text style={styles.statusText}>{item.status}</Text>
-            </View>
-          )}
-          
-          {/* Show one compact line: Next air date takes priority, then last air date */}
-          {(item.nextAirDate || item.lastAirDate) && (
-            <Text style={styles.airDate}>
-              {item.nextAirDate 
-                ? `Next: ${new Date(item.nextAirDate).toLocaleDateString()}`
-                : `Last: ${new Date(item.lastAirDate!).toLocaleDateString()}`
-              }
+  const getStatusStyle = (status: string) => {
+    const statusLower = status.toLowerCase();
+    
+    if (statusLower === 'returning series' || statusLower === 'in production') {
+      return { backgroundColor: '#4caf50', textColor: '#ffffff' }; // Green
+    } else if (statusLower === 'planned' || statusLower === 'pilot') {
+      return { backgroundColor: '#2196f3', textColor: '#ffffff' }; // Blue
+    } else if (statusLower === 'ended') {
+      return { backgroundColor: '#9e9e9e', textColor: '#ffffff' }; // Gray
+    } else if (statusLower === 'canceled') {
+      return { backgroundColor: '#f44336', textColor: '#ffffff' }; // Red
+    } else {
+      return { backgroundColor: '#e0e0e0', textColor: '#333333' }; // Neutral gray
+    }
+  };
+
+  const renderShow = ({ item }: { item: ShowLite }) => {
+    const statusStyle = item.status ? getStatusStyle(item.status) : null;
+    
+    return (
+      <Swipeable renderRightActions={() => renderRightActions(() => handleDeleteShow(item))}>
+        <TouchableOpacity
+          style={styles.showItem}
+          onPress={() => handleShowPress(item)}
+        >
+          <Image
+            source={{
+              uri: item.posterUrl || 'https://via.placeholder.com/200x300?text=No+Poster',
+            }}
+            style={styles.poster}
+            resizeMode="cover"
+          />
+          <View style={styles.showInfo}>
+            <Text style={styles.showTitle} numberOfLines={2}>
+              {item.title}
             </Text>
-          )}
-          
-          {/* Show network as small secondary text under the date line */}
-          {item.network && (
-            <Text style={styles.network}>{item.network}</Text>
-          )}
-        </View>
-      </TouchableOpacity>
-    </Swipeable>
-  );
+            
+            {/* Only render status pill if status is truthy and not "unknown" (case-insensitive) */}
+            {item.status && item.status.toLowerCase() !== 'unknown' && statusStyle && (
+              <View style={[styles.statusContainer, { backgroundColor: statusStyle.backgroundColor }]}>
+                <Text style={[styles.statusText, { color: statusStyle.textColor }]}>{item.status}</Text>
+              </View>
+            )}
+            
+            {/* Show one compact line: Next air date takes priority, then last air date */}
+            {(item.nextAirDate || item.lastAirDate) && (
+              <Text style={styles.airDate}>
+                {item.nextAirDate 
+                  ? `Next: ${new Date(item.nextAirDate).toLocaleDateString()}`
+                  : `Last: ${new Date(item.lastAirDate!).toLocaleDateString()}`
+                }
+              </Text>
+            )}
+            
+            {/* Show network as small secondary text under the date line */}
+            {item.network && (
+              <Text style={styles.network}>{item.network}</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
+    );
+  };
 
   if (loading) {
     return (
@@ -292,7 +312,6 @@ const styles = StyleSheet.create({
   },
   statusContainer: {
     alignSelf: 'flex-start',
-    backgroundColor: '#e3f2fd',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -301,7 +320,6 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1976d2',
   },
   airDate: {
     fontSize: 14,
