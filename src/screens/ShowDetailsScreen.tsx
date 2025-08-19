@@ -114,7 +114,7 @@ export default function ShowDetailsScreen() {
         <View style={styles.headerInfo}>
           <Text style={styles.title}>{show.name}</Text>
           
-          {normalizedStatus && normalizedStatus.toLowerCase() !== 'unknown' && statusColors && (
+          {!!normalizedStatus && normalizedStatus.toLowerCase() !== 'unknown' && statusColors && (
             <View style={[styles.statusBadge, { backgroundColor: statusColors.backgroundColor }]}>
               <Text style={[styles.statusText, { color: statusColors.textColor }]}>{normalizedStatus}</Text>
             </View>
@@ -132,11 +132,11 @@ export default function ShowDetailsScreen() {
             </Text>
           )}
           
-          {show.number_of_seasons && (
+          {(show.number_of_seasons ?? 0) > 0 ? (
             <Text style={styles.seasons}>
               {show.number_of_seasons} season{show.number_of_seasons !== 1 ? 's' : ''}
             </Text>
-          )}
+          ) : null}
         </View>
       </View>
 
@@ -186,7 +186,7 @@ export default function ShowDetailsScreen() {
         </View>
       )}
 
-      {show.vote_average && (
+      {(show.vote_average ?? 0) > 0 ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Rating</Text>
           <View style={styles.ratingContainer}>
@@ -198,7 +198,7 @@ export default function ShowDetailsScreen() {
             </Text>
           </View>
         </View>
-      )}
+      ) : null}
 
       <View style={styles.actionsContainer}>
         <TouchableOpacity

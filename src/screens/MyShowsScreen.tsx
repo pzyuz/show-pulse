@@ -130,7 +130,7 @@ export default function MyShowsScreen() {
             </Text>
             
             {/* Only render status pill if status is truthy and not "unknown" (case-insensitive) */}
-            {normalized && normalized.toLowerCase() !== 'unknown' && statusStyle && (
+            {!!normalized && normalized.toLowerCase() !== 'unknown' && statusStyle && (
               <View style={[styles.statusContainer, { backgroundColor: statusStyle.backgroundColor }]}>
                 <Text style={[styles.statusText, { color: statusStyle.textColor }]}>{normalized}</Text>
               </View>
