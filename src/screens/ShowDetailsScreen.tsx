@@ -15,6 +15,7 @@ import { getShowDetails } from '../services/tmdb';
 import { removeShow } from '../store/localShows';
 import { useAuth } from '../store/auth';
 import { TMDBShow } from '../types';
+import { getStatusColors, normalizeStatus } from '../utils/status';
 
 type RouteParams = {
   tmdbId: number;
@@ -94,18 +95,8 @@ export default function ShowDetailsScreen() {
     });
   };
 
-  const getStatusColor = (status?: string) => {
-    switch (status?.toLowerCase()) {
-      case 'returning series':
-        return '#4caf50';
-      case 'ended':
-        return '#f44336';
-      case 'canceled':
-        return '#ff9800';
-      default:
-        return '#9e9e9e';
-    }
-  };
+  const normalizedStatus = normalizeStatus(show?.status);
+  const statusColors = normalizedStatus ? getStatusColors(normalizedStatus) : undefined;
 
   return (
     <ScrollView style={styles.container}>
@@ -123,9 +114,9 @@ export default function ShowDetailsScreen() {
         <View style={styles.headerInfo}>
           <Text style={styles.title}>{show.name}</Text>
           
-          {show.status && (
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(show.status) }]}>
-              <Text style={styles.statusText}>{show.status}</Text>
+          {normalizedStatus && normalizedStatus.toLowerCase() !== 'unknown' && statusColors && (
+            <View style={[styles.statusBadge, { backgroundColor: statusColors.backgroundColor }]}>
+              <Text style={[styles.statusText, { color: statusColors.textColor }]}>{normalizedStatus}</Text>
             </View>
           )}
           

@@ -15,6 +15,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getShows, removeShow, hydrateMissingFields } from '../store/localShows';
 import { useAuth } from '../store/auth';
 import { ShowLite } from '../types';
+import { getStatusColors, normalizeStatus } from '../utils/status';
 
 export default function MyShowsScreen() {
   const [shows, setShows] = useState<ShowLite[]>([]);
@@ -106,24 +107,9 @@ export default function MyShowsScreen() {
     </TouchableOpacity>
   );
 
-  const getStatusStyle = (status: string) => {
-    const statusLower = status.toLowerCase();
-    
-    if (statusLower === 'returning series' || statusLower === 'in production') {
-      return { backgroundColor: '#4caf50', textColor: '#ffffff' }; // Green
-    } else if (statusLower === 'planned' || statusLower === 'pilot') {
-      return { backgroundColor: '#2196f3', textColor: '#ffffff' }; // Blue
-    } else if (statusLower === 'ended') {
-      return { backgroundColor: '#9e9e9e', textColor: '#ffffff' }; // Gray
-    } else if (statusLower === 'canceled') {
-      return { backgroundColor: '#f44336', textColor: '#ffffff' }; // Red
-    } else {
-      return { backgroundColor: '#e0e0e0', textColor: '#333333' }; // Neutral gray
-    }
-  };
-
   const renderShow = ({ item }: { item: ShowLite }) => {
-    const statusStyle = item.status ? getStatusStyle(item.status) : null;
+    const normalized = normalizeStatus(item.status);
+    const statusStyle = normalized ? getStatusColors(normalized) : null;
     
     return (
       <Swipeable renderRightActions={() => renderRightActions(() => handleDeleteShow(item))}>
@@ -144,9 +130,9 @@ export default function MyShowsScreen() {
             </Text>
             
             {/* Only render status pill if status is truthy and not "unknown" (case-insensitive) */}
-            {item.status && item.status.toLowerCase() !== 'unknown' && statusStyle && (
+            {normalized && normalized.toLowerCase() !== 'unknown' && statusStyle && (
               <View style={[styles.statusContainer, { backgroundColor: statusStyle.backgroundColor }]}>
-                <Text style={[styles.statusText, { color: statusStyle.textColor }]}>{item.status}</Text>
+                <Text style={[styles.statusText, { color: statusStyle.textColor }]}>{normalized}</Text>
               </View>
             )}
             
