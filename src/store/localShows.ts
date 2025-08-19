@@ -48,7 +48,13 @@ export const upsertShow = async (show: ShowLite): Promise<void> => {
     const existingIndex = shows.findIndex(s => s.tmdbId === show.tmdbId);
     
     if (existingIndex !== -1) {
-      shows[existingIndex] = show;
+      // Update existing show with new data but preserve timestamps
+      shows[existingIndex] = { 
+        ...shows[existingIndex], 
+        ...show,
+        createdAt: shows[existingIndex].createdAt, // Preserve original creation date
+        updatedAt: new Date().toISOString() // Update timestamp
+      };
     } else {
       shows.push(show);
     }

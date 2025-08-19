@@ -10,10 +10,10 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { searchShows, getShowDetails, TMDBSearchTVResult } from '../services/tmdb';
-import { upsertShow, updateShowPartial } from '../store/localShows';
+import { upsertShow, updateShowPartial, getShows } from '../store/localShows';
 import { useAuth } from '../store/auth';
 import { ShowLite } from '../types';
 // removed useFocusEffect-based debounce
@@ -21,11 +21,30 @@ import { ShowLite } from '../types';
 export default function AddShowScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
   const navigation = useNavigation();
   const { isGuest } = useAuth();
   const queryClient = useQueryClient();
 
   // (Removed external key check; tmdb.ts throws a clear error if truly missing)
+
+  // Fetch current shows to detect duplicates
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadCurrentShows = async () => {
+        if (isGuest) {
+          try {
+            const shows = await getShows();
+            setAddedIds(new Set(shows.map(s => s.tmdbId)));
+          } catch (error) {
+            console.warn('Failed to load current shows:', error);
+          }
+        }
+      };
+      
+      loadCurrentShows();
+    }, [isGuest])
+  );
 
   // Debounce search query on input change
   useEffect(() => {
@@ -42,9 +61,25 @@ export default function AddShowScreen() {
     retry: 0,
   });
 
+  const handleShowPress = (show: TMDBSearchTVResult['results'][0]) => {
+    if (addedIds.has(show.id)) {
+      // Navigate to details for already-added shows
+      navigation.navigate('ShowDetails' as never, { tmdbId: show.id } as never);
+    } else {
+      // Add new show
+      handleAddShow(show);
+    }
+  };
+
   const handleAddShow = async (show: TMDBSearchTVResult['results'][0]) => {
     try {
       if (isGuest) {
+        // Check if already added
+        if (addedIds.has(show.id)) {
+          Alert.alert('Already Added', 'This show is already in your list.');
+          return;
+        }
+
         const newShow: ShowLite = {
           tmdbId: show.id,
           title: show.name,
@@ -57,6 +92,9 @@ export default function AddShowScreen() {
           updatedAt: new Date().toISOString(),
         };
         await upsertShow(newShow);
+        
+        // Update local state to reflect the addition
+        setAddedIds(prev => new Set([...prev, show.id]));
         
         // Fetch full details and persist enriched record in background
         // This work is done in background: do not block navigation/goBack
@@ -91,33 +129,46 @@ export default function AddShowScreen() {
     }
   };
 
-  const renderSearchResult = ({ item }: { item: TMDBSearchTVResult['results'][0] }) => (
-    <TouchableOpacity
-      style={styles.searchResult}
-      onPress={() => handleAddShow(item)}
-    >
-      <Image
-        source={{
-          uri: item.poster_path
-            ? `https://image.tmdb.org/t/p/w200${item.poster_path}`
-            : 'https://via.placeholder.com/200x300?text=No+Poster',
-        }}
-        style={styles.poster}
-        resizeMode="cover"
-      />
-      <View style={styles.resultInfo}>
-        <Text style={styles.showTitle}>{item.name}</Text>
-        <Text style={styles.showDate}>
-          {item.first_air_date
-            ? `First aired: ${new Date(item.first_air_date).getFullYear()}`
-            : 'Release date unknown'}
-        </Text>
-        <Text style={styles.showOverview} numberOfLines={2}>
-          {item.overview || 'No description available'}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderSearchResult = ({ item }: { item: TMDBSearchTVResult['results'][0] }) => {
+    const alreadyAdded = addedIds.has(item.id);
+    
+    return (
+      <TouchableOpacity
+        style={styles.searchResult}
+        onPress={() => handleShowPress(item)}
+        accessibilityLabel={alreadyAdded ? `${item.name} - Already added. Opens details` : `${item.name} - Add to your list`}
+        accessibilityRole="button"
+      >
+        <Image
+          source={{
+            uri: item.poster_path
+              ? `https://image.tmdb.org/t/p/w200${item.poster_path}`
+              : 'https://via.placeholder.com/200x300?text=No+Poster',
+          }}
+          style={styles.poster}
+          resizeMode="cover"
+        />
+        <View style={styles.resultInfo}>
+          <View style={styles.titleRow}>
+            <Text style={styles.showTitle}>{item.name}</Text>
+            {alreadyAdded && (
+              <View style={styles.alreadyAddedBadge}>
+                <Text style={styles.alreadyAddedText}>✓ Already added</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.showDate}>
+            {item.first_air_date
+              ? `First aired: ${new Date(item.first_air_date).getFullYear()}`
+              : 'Release date unknown'}
+          </Text>
+          <Text style={styles.showOverview} numberOfLines={2}>
+            {item.overview || 'No description available'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -273,10 +324,30 @@ const styles = StyleSheet.create({
   resultInfo: {
     flex: 1,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
   showTitle: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 4,
+    flex: 1,
+    marginRight: 8,
+  },
+  alreadyAddedBadge: {
+    backgroundColor: '#e0e0e0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  alreadyAddedText: {
+    fontSize: 12,
+    color: '#333',
+    fontWeight: '500',
   },
   showDate: {
     fontSize: 14,

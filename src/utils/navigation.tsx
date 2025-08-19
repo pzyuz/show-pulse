@@ -12,7 +12,7 @@ export type RootStackParamList = {
   Auth: undefined;
   MyShows: undefined;
   AddShow: undefined;
-  ShowDetails: { showId: string };
+  ShowDetails: { tmdbId: number };
   Settings: undefined;
 };
 
