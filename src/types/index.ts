@@ -70,4 +70,7 @@ export interface ShowLite {
   nextAirDate?: string;
   lastAirDate?: string;
   network?: string;
+  genres?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }

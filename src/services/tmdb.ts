@@ -78,6 +78,7 @@ export type TMDBTVDetails = {
   networks?: Array<{ name: string }>;
   vote_average?: number;
   vote_count?: number;
+  genres?: Array<{ id: number; name: string }>;
   external_ids?: {
     imdb_id?: string | null;
     tvdb_id?: number | null;

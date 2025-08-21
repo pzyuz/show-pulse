@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,13 +16,53 @@ import { getShows, removeShow, hydrateMissingFields } from '../store/localShows'
 import { useAuth } from '../store/auth';
 import { ShowLite } from '../types';
 import { getStatusColors, normalizeStatus } from '../utils/status';
+import FilterBar from '../components/FilterBar';
 
 export default function MyShowsScreen() {
   const [shows, setShows] = useState<ShowLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Filter state
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [filterNetwork, setFilterNetwork] = useState<string | null>(null);
+  const [filterGenres, setFilterGenres] = useState<Set<string>>(new Set());
+  const [showFilters, setShowFilters] = useState(false);
+  
   const navigation = useNavigation();
   const { isGuest } = useAuth();
+
+  // Compute available filter options from current shows
+  const options = useMemo(() => {
+    const status = new Set<string>();
+    const network = new Set<string>();
+    const genres = new Set<string>();
+    
+    shows.forEach(s => {
+      if (s.status && s.status.toLowerCase() !== 'unknown') status.add(s.status);
+      if (s.network) network.add(s.network);
+      (s.genres ?? []).forEach(g => genres.add(g));
+    });
+    
+    return {
+      status: Array.from(status).sort(),
+      network: Array.from(network).sort(),
+      genres: Array.from(genres).sort(),
+    };
+  }, [shows]);
+
+  // Derive filtered list based on active filters
+  const filtered = useMemo(() => {
+    return shows.filter(s => {
+      if (filterStatus && (s.status ?? '').toLowerCase() !== filterStatus.toLowerCase()) return false;
+      if (filterNetwork && (s.network ?? '') !== filterNetwork) return false;
+      if (filterGenres.size > 0) {
+        const g = new Set(s.genres ?? []);
+        for (const need of filterGenres) if (!g.has(need)) return false;
+      }
+      return true;
+    });
+  }, [shows, filterStatus, filterNetwork, filterGenres]);
 
   const loadShows = useCallback(async () => {
     try {
@@ -96,6 +136,13 @@ export default function MyShowsScreen() {
     navigation.navigate('ShowDetails' as never, { tmdbId: show.tmdbId } as never);
   };
 
+  const handleClearFilters = () => {
+    setFilterStatus(null);
+    setFilterNetwork(null);
+    setFilterGenres(new Set());
+    setShowFilters(false);
+  };
+
   const renderRightActions = (onDelete: () => void) => (
     <TouchableOpacity
       accessibilityLabel="Delete show"
@@ -107,7 +154,7 @@ export default function MyShowsScreen() {
     </TouchableOpacity>
   );
 
-  const renderShow = ({ item }: { item: ShowLite }) => {
+  const renderShow = useCallback(({ item }: { item: ShowLite }) => {
     const normalized = normalizeStatus(item.status);
     const statusStyle = normalized ? getStatusColors(normalized) : null;
     
@@ -154,7 +201,9 @@ export default function MyShowsScreen() {
         </TouchableOpacity>
       </Swipeable>
     );
-  };
+  }, [handleDeleteShow, handleShowPress]);
+
+  const keyExtractor = useCallback((item: ShowLite) => item.tmdbId.toString(), []);
 
   if (loading) {
     return (
@@ -190,17 +239,43 @@ export default function MyShowsScreen() {
             <Text style={styles.emptyAddButtonText}>Add Your First Show</Text>
           </TouchableOpacity>
         </View>
+      ) : filtered.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No shows match filters</Text>
+          <Text style={styles.emptySubtitle}>
+            Try adjusting your filter criteria
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyAddButton}
+            onPress={handleClearFilters}
+          >
+            <Text style={styles.emptyAddButtonText}>Clear Filters</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
-        <FlatList
-          data={shows}
-          renderItem={renderShow}
-          keyExtractor={(item) => item.tmdbId.toString()}
-          style={styles.showsList}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-          }
-        />
+        <>
+          <FilterBar
+            options={options}
+            filterStatus={filterStatus}
+            setFilterStatus={setFilterStatus}
+            filterNetwork={filterNetwork}
+            setFilterNetwork={setFilterNetwork}
+            filterGenres={filterGenres}
+            setFilterGenres={setFilterGenres}
+            showFilters={showFilters}
+            setShowFilters={setShowFilters}
+          />
+          <FlatList
+            data={filtered}
+            renderItem={renderShow}
+            keyExtractor={keyExtractor}
+            style={styles.showsList}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            }
+          />
+        </>
       )}
     </View>
   );

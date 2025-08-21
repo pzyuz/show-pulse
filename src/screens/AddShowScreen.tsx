@@ -106,6 +106,7 @@ export default function AddShowScreen() {
               nextAirDate: details.next_episode_to_air?.air_date || undefined,
               lastAirDate: details.last_episode_to_air?.air_date || undefined,
               network: details.networks?.[0]?.name || undefined,
+              genres: details.genres?.map(g => g.name) || undefined,
             };
             await updateShowPartial(show.id, patch);
           } catch (error) {
