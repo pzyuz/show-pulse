@@ -37,6 +37,7 @@ export interface TMDBShow {
   name: string;
   poster_path?: string;
   status: string;
+  first_air_date?: string;
   next_episode_to_air?: {
     air_date: string;
   };
@@ -46,6 +47,13 @@ export interface TMDBShow {
   networks?: Array<{
     name: string;
   }>;
+  external_ids?: {
+    imdb_id?: string | null;
+    tvdb_id?: number | null;
+    facebook_id?: string | null;
+    instagram_id?: string | null;
+    twitter_id?: string | null;
+  } | null;
 }
 
 export interface TMDBSearchResult {

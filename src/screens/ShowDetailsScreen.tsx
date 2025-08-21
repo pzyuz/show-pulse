@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { Linking } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { getShowDetails } from '../services/tmdb';
@@ -97,6 +98,16 @@ export default function ShowDetailsScreen() {
 
   const normalizedStatus = normalizeStatus(show?.status);
   const statusColors = normalizedStatus ? getStatusColors(normalizedStatus) : undefined;
+  const imdbId = show?.external_ids?.imdb_id ?? null;
+  const showName = show?.name?.trim();
+  const slugifyTitle = (name: string): string => {
+    const withoutParens = name.replace(/\s*\([^)]*\)\s*/g, ' ');
+    return withoutParens
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  };
+  const metacriticSlug = showName ? slugifyTitle(showName) : undefined;
 
   return (
     <ScrollView style={styles.container}>
@@ -139,6 +150,41 @@ export default function ShowDetailsScreen() {
           ) : null}
         </View>
       </View>
+
+      {(imdbId || metacriticSlug) && (
+        <View style={styles.linksRow}>
+          {imdbId ? (
+            <TouchableOpacity
+              style={[styles.linkPill, styles.linkPillImdb]}
+              onPress={() => Linking.openURL(`https://www.imdb.com/title/${imdbId}/`)}
+              accessibilityRole="button"
+              accessibilityLabel="Open on IMDb"
+              activeOpacity={0.8}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.linkPillText, styles.linkPillTextImdb]}>IMDb</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {metacriticSlug ? (
+            <TouchableOpacity
+              style={[styles.linkPill, styles.linkPillMc]}
+              onPress={() => {
+                const url = `https://www.metacritic.com/tv/${metacriticSlug}/`;
+                Linking.openURL(url).catch(() => {
+                  Alert.alert('Error', 'Could not open Metacritic link.');
+                });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Open on Metacritic"
+              activeOpacity={0.8}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.linkPillText, styles.linkPillTextMc]}>MC</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      )}
 
       {show.overview && (
         <View style={styles.section}>
@@ -398,5 +444,44 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  linksRow: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    marginTop: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  linkPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  linkPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  linkPillImdb: {
+    backgroundColor: '#F5C518',
+  },
+  linkPillTextImdb: {
+    color: '#000000',
+  },
+  linkPillMc: {
+    backgroundColor: '#2A2A2A',
+  },
+  linkPillTextMc: {
+    color: '#FFFFFF',
   },
 });
