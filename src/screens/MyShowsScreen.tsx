@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { getShows, removeShow, hydrateMissingFields } from '../store/localShows';
+import { getShows, removeShow, hydrateMissingFields, toggleFavorite } from '../store/localShows';
 import { useAuth } from '../store/auth';
 import { ShowLite } from '../types';
 import { getStatusColors, normalizeStatus } from '../utils/status';
@@ -27,7 +27,11 @@ export default function MyShowsScreen() {
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [filterNetwork, setFilterNetwork] = useState<string | null>(null);
   const [filterGenres, setFilterGenres] = useState<Set<string>>(new Set());
+  const [filterFavorites, setFilterFavorites] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Refs to track Swipeable instances for each row
+  const swipeableRefs = useRef<{ [tmdbId: number]: Swipeable | null }>({});
   
   const navigation = useNavigation();
   const { isGuest } = useAuth();
@@ -60,9 +64,10 @@ export default function MyShowsScreen() {
         const g = new Set(s.genres ?? []);
         for (const need of filterGenres) if (!g.has(need)) return false;
       }
+      if (filterFavorites && !s.isFavorite) return false;
       return true;
     });
-  }, [shows, filterStatus, filterNetwork, filterGenres]);
+  }, [shows, filterStatus, filterNetwork, filterGenres, filterFavorites]);
 
   const loadShows = useCallback(async () => {
     try {
@@ -104,6 +109,25 @@ export default function MyShowsScreen() {
     }, [loadShows])
   );
 
+  // Clean up swipeable refs when shows change significantly
+  React.useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      swipeableRefs.current = {};
+    };
+  }, []);
+
+  // Clean up refs for shows that no longer exist
+  React.useEffect(() => {
+    const currentTmdbIds = new Set(shows.map(s => s.tmdbId));
+    Object.keys(swipeableRefs.current).forEach(tmdbIdStr => {
+      const tmdbId = parseInt(tmdbIdStr, 10);
+      if (!currentTmdbIds.has(tmdbId)) {
+        delete swipeableRefs.current[tmdbId];
+      }
+    });
+  }, [shows]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadShows();
@@ -123,8 +147,16 @@ export default function MyShowsScreen() {
             try {
               await removeShow(show.tmdbId);
               setShows(prev => prev.filter(s => s.tmdbId !== show.tmdbId));
+              // Clean up the ref when show is removed
+              delete swipeableRefs.current[show.tmdbId];
             } catch (error) {
               Alert.alert('Error', 'Failed to remove show. Please try again.');
+            } finally {
+              // Close the swipeable regardless of success/failure
+              const swipeable = swipeableRefs.current[show.tmdbId];
+              if (swipeable) {
+                swipeable.close();
+              }
             }
           },
         },
@@ -140,6 +172,7 @@ export default function MyShowsScreen() {
     setFilterStatus(null);
     setFilterNetwork(null);
     setFilterGenres(new Set());
+    setFilterFavorites(false);
     setShowFilters(false);
   };
 
@@ -154,12 +187,50 @@ export default function MyShowsScreen() {
     </TouchableOpacity>
   );
 
+  const renderLeftActions = (show: ShowLite) => (
+    <TouchableOpacity
+      accessibilityLabel={show.isFavorite ? "Remove from favorites" : "Add to favorites"}
+      onPress={async () => {
+        try {
+          await toggleFavorite(show.tmdbId);
+          setShows(prev => prev.map(s => 
+            s.tmdbId === show.tmdbId 
+              ? { ...s, isFavorite: !s.isFavorite, updatedAt: new Date().toISOString() }
+              : s
+          ));
+        } catch (error) {
+          Alert.alert('Error', 'Failed to update favorite status. Please try again.');
+        } finally {
+          // Close the swipeable regardless of success/failure
+          const swipeable = swipeableRefs.current[show.tmdbId];
+          if (swipeable) {
+            swipeable.close();
+          }
+        }
+      }}
+      style={styles.leftAction}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.leftActionText}>
+        {show.isFavorite ? '★' : '☆'}
+      </Text>
+    </TouchableOpacity>
+  );
+
   const renderShow = useCallback(({ item }: { item: ShowLite }) => {
     const normalized = normalizeStatus(item.status);
     const statusStyle = normalized ? getStatusColors(normalized) : null;
     
     return (
-      <Swipeable renderRightActions={() => renderRightActions(() => handleDeleteShow(item))}>
+      <Swipeable
+        ref={(ref) => {
+          if (ref) {
+            swipeableRefs.current[item.tmdbId] = ref;
+          }
+        }}
+        renderLeftActions={() => renderLeftActions(item)}
+        renderRightActions={() => renderRightActions(() => handleDeleteShow(item))}
+      >
         <TouchableOpacity
           style={styles.showItem}
           onPress={() => handleShowPress(item)}
@@ -172,6 +243,13 @@ export default function MyShowsScreen() {
             resizeMode="cover"
           />
           <View style={styles.showInfo}>
+            {/* Favorite star marker */}
+            {item.isFavorite && (
+              <View style={styles.favoriteMarker}>
+                <Text style={styles.favoriteStar}>★</Text>
+              </View>
+            )}
+            
             <Text style={styles.showTitle} numberOfLines={2}>
               {item.title}
             </Text>
@@ -201,7 +279,7 @@ export default function MyShowsScreen() {
         </TouchableOpacity>
       </Swipeable>
     );
-  }, [handleDeleteShow, handleShowPress]);
+  }, [handleDeleteShow, handleShowPress, renderLeftActions, renderRightActions]);
 
   const keyExtractor = useCallback((item: ShowLite) => item.tmdbId.toString(), []);
 
@@ -262,6 +340,8 @@ export default function MyShowsScreen() {
             setFilterNetwork={setFilterNetwork}
             filterGenres={filterGenres}
             setFilterGenres={setFilterGenres}
+            filterFavorites={filterFavorites}
+            setFilterFavorites={setFilterFavorites}
             showFilters={showFilters}
             setShowFilters={setShowFilters}
           />
@@ -363,6 +443,7 @@ const styles = StyleSheet.create({
   showInfo: {
     flex: 1,
     justifyContent: 'space-between',
+    position: 'relative',
   },
   showTitle: {
     fontSize: 18,
@@ -404,5 +485,31 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  leftAction: {
+    backgroundColor: '#ffd700', // Gold color for favorites
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 12,
+  },
+  leftActionText: {
+    fontSize: 24, // Larger font for the star
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  favoriteMarker: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#ffd700', // Gold color for favorites
+    borderRadius: 10,
+    padding: 4,
+  },
+  favoriteStar: {
+    fontSize: 20,
+    color: '#333',
   },
 });

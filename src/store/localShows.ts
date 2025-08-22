@@ -81,6 +81,25 @@ export const updateShowPartial = async (tmdbId: number, patch: Partial<ShowLite>
   }
 };
 
+export const toggleFavorite = async (tmdbId: number): Promise<void> => {
+  try {
+    const shows = await getShows();
+    const existingIndex = shows.findIndex(s => s.tmdbId === tmdbId);
+    
+    if (existingIndex !== -1) {
+      shows[existingIndex] = { 
+        ...shows[existingIndex], 
+        isFavorite: !shows[existingIndex].isFavorite,
+        updatedAt: new Date().toISOString()
+      };
+      await AsyncStorage.setItem(SHOWS_STORAGE_KEY, JSON.stringify(shows));
+    }
+  } catch (error) {
+    console.error('Error toggling favorite status:', error);
+    throw error;
+  }
+};
+
 export const hydrateMissingFields = async (shows: ShowLite[]): Promise<void> => {
   try {
     const { getShowDetails } = await import('../services/tmdb');

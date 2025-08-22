@@ -71,6 +71,7 @@ export interface ShowLite {
   lastAirDate?: string;
   network?: string;
   genres?: string[];
+  isFavorite?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

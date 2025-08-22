@@ -88,6 +88,8 @@ export default function AddShowScreen() {
           nextAirDate: undefined,
           lastAirDate: undefined,
           network: undefined,
+          genres: undefined,
+          isFavorite: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };

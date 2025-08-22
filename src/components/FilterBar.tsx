@@ -14,6 +14,8 @@ type Props = {
   setFilterNetwork: (v: string | null) => void;
   filterGenres: Set<string>;
   setFilterGenres: (updater: (prev: Set<string>) => Set<string>) => void;
+  filterFavorites: boolean;
+  setFilterFavorites: (v: boolean) => void;
   showFilters: boolean;
   setShowFilters: (v: boolean) => void;
 };
@@ -26,10 +28,12 @@ export default function FilterBar({
   setFilterNetwork,
   filterGenres,
   setFilterGenres,
+  filterFavorites,
+  setFilterFavorites,
   showFilters,
   setShowFilters,
 }: Props) {
-  const hasActiveFilters = filterStatus || filterNetwork || filterGenres.size > 0;
+  const hasActiveFilters = filterStatus || filterNetwork || filterGenres.size > 0 || filterFavorites;
 
   const handleStatusToggle = (status: string) => {
     setFilterStatus(filterStatus === status ? null : status);
@@ -55,6 +59,7 @@ export default function FilterBar({
     setFilterStatus(null);
     setFilterNetwork(null);
     setFilterGenres(() => new Set());
+    setFilterFavorites(false);
   };
 
   return (
@@ -112,6 +117,19 @@ export default function FilterBar({
               </TouchableOpacity>
             </View>
           ))}
+          
+          {filterFavorites && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>Favorites only</Text>
+              <TouchableOpacity
+                onPress={() => setFilterFavorites(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Remove favorites filter"
+              >
+                <Text style={styles.filterBadgeRemove}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <TouchableOpacity
@@ -217,6 +235,30 @@ export default function FilterBar({
               </View>
             </View>
           )}
+
+          {/* Favorites filter */}
+          <View style={styles.filterSection}>
+            <Text style={styles.filterSectionTitle}>Favorites</Text>
+            <View style={styles.chipRow}>
+              <TouchableOpacity
+                style={[
+                  styles.chip,
+                  filterFavorites && styles.chipSelected
+                ]}
+                onPress={() => setFilterFavorites(!filterFavorites)}
+                accessibilityRole="button"
+                accessibilityLabel="Filter by favorites"
+                accessibilityState={{ selected: filterFavorites }}
+              >
+                <Text style={[
+                  styles.chipText,
+                  filterFavorites && styles.chipTextSelected
+                ]}>
+                  Favorites Only
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       )}
     </View>
