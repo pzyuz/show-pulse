@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ShowLite } from '../types';
+import { ShowLite, SortConfig } from '../types';
 
 const SHOWS_STORAGE_KEY = '@sp:shows';
 
@@ -127,8 +127,10 @@ export const hydrateMissingFields = async (shows: ShowLite[]): Promise<void> => 
               status: details.status || undefined,
               nextAirDate: details.next_episode_to_air?.air_date || undefined,
               lastAirDate: details.last_episode_to_air?.air_date || undefined,
+              firstAirDate: details.first_air_date || undefined,
               network: details.networks?.[0]?.name || undefined,
               genres: details.genres?.map(g => g.name) || undefined,
+              voteAverage: details.vote_average || undefined,
             };
             
             await updateShowPartial(show.tmdbId, patch);
@@ -143,4 +145,33 @@ export const hydrateMissingFields = async (shows: ShowLite[]): Promise<void> => 
     // Swallow errors to avoid UI disruption
     console.warn('Error during show hydration:', error);
   }
+};
+
+const SORT_CONFIG_KEY = '@sp:sortConfig';
+
+export const saveSortConfig = async (config: SortConfig): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(SORT_CONFIG_KEY, JSON.stringify(config));
+  } catch (error) {
+    console.error('Error saving sort config:', error);
+    throw error;
+  }
+};
+
+export const loadSortConfig = async (): Promise<SortConfig> => {
+  try {
+    const stored = await AsyncStorage.getItem(SORT_CONFIG_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading sort config:', error);
+  }
+  
+  // Default sort configuration
+  return {
+    key: 'dateAdded',
+    direction: 'desc',
+    favoritesFirst: true,
+  };
 };

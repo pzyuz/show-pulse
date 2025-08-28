@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,11 +12,17 @@ import {
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { getShows, removeShow, hydrateMissingFields, toggleFavorite } from '../store/localShows';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { getShows, removeShow, hydrateMissingFields, toggleFavorite, loadSortConfig, saveSortConfig } from '../store/localShows';
 import { useAuth } from '../store/auth';
-import { ShowLite } from '../types';
+import { ShowLite, SortConfig } from '../types';
 import { getStatusColors, normalizeStatus } from '../utils/status';
+import { sortShows } from '../utils/sorting';
 import FilterBar from '../components/FilterBar';
+import SortBar from '../components/SortBar';
+import { RootStackParamList } from '../utils/navigation';
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MyShows'>;
 
 export default function MyShowsScreen() {
   const [shows, setShows] = useState<ShowLite[]>([]);
@@ -30,10 +36,18 @@ export default function MyShowsScreen() {
   const [filterFavorites, setFilterFavorites] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   
+  // Sort state
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: 'dateAdded',
+    direction: 'desc',
+    favoritesFirst: true,
+  });
+  const [showSortBar, setShowSortBar] = useState(false);
+  
   // Refs to track Swipeable instances for each row
   const swipeableRefs = useRef<{ [tmdbId: number]: Swipeable | null }>({});
   
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const { isGuest } = useAuth();
 
   // Compute available filter options from current shows
@@ -68,6 +82,11 @@ export default function MyShowsScreen() {
       return true;
     });
   }, [shows, filterStatus, filterNetwork, filterGenres, filterFavorites]);
+
+  // Apply sorting to the filtered list
+  const sortedFiltered = useMemo(() => {
+    return sortShows(filtered, sortConfig);
+  }, [filtered, sortConfig]);
 
   const loadShows = useCallback(async () => {
     try {
@@ -108,6 +127,20 @@ export default function MyShowsScreen() {
       loadShows();
     }, [loadShows])
   );
+
+  // Load sort config on mount
+  useEffect(() => {
+    loadSortConfig().then(config => {
+      setSortConfig(config);
+    }).catch(console.warn);
+  }, []);
+
+  // Save sort config on unmount
+  useEffect(() => {
+    return () => {
+      saveSortConfig(sortConfig);
+    };
+  }, [sortConfig]);
 
   // Clean up swipeable refs when shows change significantly
   React.useEffect(() => {
@@ -165,7 +198,7 @@ export default function MyShowsScreen() {
   };
 
   const handleShowPress = (show: ShowLite) => {
-    navigation.navigate('ShowDetails' as never, { tmdbId: show.tmdbId } as never);
+    navigation.navigate('ShowDetails', { tmdbId: show.tmdbId });
   };
 
   const handleClearFilters = () => {
@@ -174,6 +207,10 @@ export default function MyShowsScreen() {
     setFilterGenres(new Set());
     setFilterFavorites(false);
     setShowFilters(false);
+  };
+
+  const handleSortChange = (newSortConfig: SortConfig) => {
+    setSortConfig(newSortConfig);
   };
 
   const renderRightActions = (onDelete: () => void) => (
@@ -295,11 +332,11 @@ export default function MyShowsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate('Settings' as never)}>
+        <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
           <Text style={styles.headerLink}>Settings</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Shows</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('AddShow' as never)}>
+        <TouchableOpacity onPress={() => navigation.navigate('AddShow')}>
           <Text style={styles.headerLink}>Add</Text>
         </TouchableOpacity>
       </View>
@@ -312,7 +349,7 @@ export default function MyShowsScreen() {
           </Text>
           <TouchableOpacity
             style={styles.emptyAddButton}
-            onPress={() => navigation.navigate('AddShow' as never)}
+            onPress={() => navigation.navigate('AddShow')}
           >
             <Text style={styles.emptyAddButtonText}>Add Your First Show</Text>
           </TouchableOpacity>
@@ -332,6 +369,12 @@ export default function MyShowsScreen() {
         </View>
       ) : (
         <>
+          <SortBar
+            sortConfig={sortConfig}
+            onSortConfigChange={handleSortChange}
+            showSortBar={showSortBar}
+            setShowSortBar={setShowSortBar}
+          />
           <FilterBar
             options={options}
             filterStatus={filterStatus}
@@ -346,7 +389,7 @@ export default function MyShowsScreen() {
             setShowFilters={setShowFilters}
           />
           <FlatList
-            data={filtered}
+            data={sortedFiltered}
             renderItem={renderShow}
             keyExtractor={keyExtractor}
             style={styles.showsList}

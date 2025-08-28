@@ -71,14 +71,12 @@ export type TMDBTVDetails = {
   name: string;
   overview?: string | null;
   poster_path?: string | null;
-  first_air_date?: string | null;
   status?: string | null;
+  first_air_date?: string | null;
   next_episode_to_air?: { air_date?: string | null } | null;
   last_episode_to_air?: { air_date?: string | null } | null;
   networks?: Array<{ name: string }>;
   vote_average?: number;
-  vote_count?: number;
-  genres?: Array<{ id: number; name: string }>;
   external_ids?: {
     imdb_id?: string | null;
     tvdb_id?: number | null;
@@ -86,6 +84,7 @@ export type TMDBTVDetails = {
     instagram_id?: string | null;
     twitter_id?: string | null;
   } | null;
+  genres?: Array<{ id: number; name: string }>;
 };
 
 export async function searchShows(query: string) {
@@ -109,5 +108,8 @@ export async function searchShows(query: string) {
 
 export async function getShowDetails(tmdbId: number) {
   if (!tmdbId) throw new Error('Invalid TMDB id');
-  return tmdbGet<TMDBTVDetails>(`/tv/${tmdbId}`, { language: 'en-US', append_to_response: 'external_ids' });
+  return tmdbGet<TMDBTVDetails>(`/tv/${tmdbId}`, { 
+    language: 'en-US',
+    append_to_response: 'external_ids'
+  });
 }

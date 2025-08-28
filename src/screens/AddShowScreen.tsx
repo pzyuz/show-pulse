@@ -98,30 +98,33 @@ export default function AddShowScreen() {
         // Update local state to reflect the addition
         setAddedIds(prev => new Set([...prev, show.id]));
         
-        // Fetch full details and persist enriched record in background
-        // This work is done in background: do not block navigation/goBack
-        (async () => {
-          try {
-            const details = await getShowDetails(show.id);
-            const patch: Partial<ShowLite> = {
-              status: details.status || undefined,
-              nextAirDate: details.next_episode_to_air?.air_date || undefined,
-              lastAirDate: details.last_episode_to_air?.air_date || undefined,
-              network: details.networks?.[0]?.name || undefined,
-              genres: details.genres?.map(g => g.name) || undefined,
-            };
-            await updateShowPartial(show.id, patch);
-          } catch (error) {
-            // Silently ignore network errors to avoid UI disruption
-            console.warn('Failed to enrich show data:', error);
-          }
-        })();
-        
         // Warm details cache in background so Details screen opens instantly
         queryClient.prefetchQuery({
           queryKey: ['showDetails', show.id],
           queryFn: () => getShowDetails(show.id),
         });
+
+        // Fetch full details to enrich the show data
+        try {
+          const details = await getShowDetails(show.id);
+          const enrichedShow: ShowLite = {
+            ...newShow,
+            status: details.status || undefined,
+            nextAirDate: details.next_episode_to_air?.air_date || undefined,
+            lastAirDate: details.last_episode_to_air?.air_date || undefined,
+            firstAirDate: details.first_air_date || undefined,
+            network: details.networks?.[0]?.name || undefined,
+            genres: details.genres?.map(g => g.name) || undefined,
+            voteAverage: details.vote_average || undefined,
+          };
+          
+          // Update the stored show with enriched data
+          await upsertShow(enrichedShow);
+        } catch (error) {
+          // Silently ignore enrichment errors - the basic show data is already saved
+          console.warn('Failed to enrich show data:', error);
+        }
+        
         // go back to list
         navigation.goBack();
       } else {

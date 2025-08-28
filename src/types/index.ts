@@ -71,7 +71,18 @@ export interface ShowLite {
   lastAirDate?: string;
   network?: string;
   genres?: string[];
-  isFavorite?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  isFavorite?: boolean;
+  firstAirDate?: string;
+  voteAverage?: number;
+}
+
+export type SortKey = 'title' | 'dateAdded' | 'firstAirDate' | 'nextAirDate' | 'lastAirDate' | 'rating';
+export type SortDirection = 'asc' | 'desc';
+
+export interface SortConfig {
+  key: SortKey;
+  direction: SortDirection;
+  favoritesFirst: boolean;
 }
