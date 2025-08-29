@@ -68,11 +68,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       if (isGuest) {
-        // Clear all guest data
+        // Clear all guest data including theme preference
         await AsyncStorage.multiRemove([
           GUEST_USER_KEY,
           '@sp:shows',
-          '@sp:guest_shows'
+          '@sp:guest_shows',
+          '@sp:theme'
         ]);
       }
       

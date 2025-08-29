@@ -12,44 +12,46 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../store/auth';
+import { useTheme } from '../theme/ThemeProvider';
 
 export default function AuthScreen() {
+  const navigation = useNavigation();
+  const { signIn, signInAsGuest } = useAuth();
+  const { theme } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [guestLoading, setGuestLoading] = useState(false);
-  const navigation = useNavigation();
-  const { signInAsGuest } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter both email and password');
+      Alert.alert('Error', 'Please enter both email and password.');
       return;
     }
 
-    setLoading(true);
+    setIsLoading(true);
     try {
-      // TODO: Implement Supabase authentication
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-      Alert.alert('Coming Soon', 'Supabase authentication will be available soon!');
+      await signIn(email.trim(), password);
+      // Navigation will be handled by the auth context
     } catch (error) {
-      Alert.alert('Error', 'Failed to sign in. Please try again.');
+      Alert.alert('Sign In Failed', 'Invalid email or password. Please try again.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   const handleGuestMode = async () => {
-    setGuestLoading(true);
+    setIsLoading(true);
     try {
       await signInAsGuest();
-      // Navigation will be handled automatically by the auth context
+      // Navigation will be handled by the auth context
     } catch (error) {
-      Alert.alert('Error', 'Failed to enter guest mode. Please try again.');
+      Alert.alert('Guest Mode Failed', 'Unable to enter guest mode. Please try again.');
     } finally {
-      setGuestLoading(false);
+      setIsLoading(false);
     }
   };
+
+  const styles = createStyles(theme);
 
   return (
     <KeyboardAvoidingView
@@ -63,65 +65,64 @@ export default function AuthScreen() {
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.formTitle}>Sign In</Text>
-          
           <TextInput
             style={styles.input}
             placeholder="Email"
+            placeholderTextColor={theme.text.muted}
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            editable={!isLoading}
+            accessibilityLabel="Email input"
+            accessibilityRole="text"
           />
-          
+
           <TextInput
             style={styles.input}
             placeholder="Password"
+            placeholderTextColor={theme.text.muted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
+            editable={!isLoading}
+            accessibilityLabel="Password input"
+            accessibilityRole="text"
           />
-          
+
           <TouchableOpacity
-            style={[styles.signInButton, loading && styles.buttonDisabled]}
+            style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
             onPress={handleSignIn}
-            disabled={loading}
+            disabled={isLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in with email and password"
           >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
+            {isLoading ? (
+              <ActivityIndicator size="small" color={theme.action.primary.text} />
             ) : (
-              <Text style={styles.signInButtonText}>Sign In</Text>
+              <Text style={styles.primaryButtonText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryButton, isLoading && styles.buttonDisabled]}
+            onPress={handleGuestMode}
+            disabled={isLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Continue as guest without signing in"
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color={theme.action.secondary.text} />
+            ) : (
+              <Text style={styles.secondaryButtonText}>Continue as Guest</Text>
             )}
           </TouchableOpacity>
         </View>
 
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.guestButton, guestLoading && styles.buttonDisabled]}
-          onPress={handleGuestMode}
-          disabled={guestLoading}
-        >
-          {guestLoading ? (
-            <ActivityIndicator size="small" color="#007AFF" />
-          ) : (
-            <Text style={styles.guestButtonText}>Continue as Guest</Text>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.info}>
-          <Text style={styles.infoText}>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
             Guest mode allows you to try the app without creating an account.
-          </Text>
-          <Text style={styles.infoText}>
-            Your data will be stored locally on your device.
           </Text>
         </View>
       </View>
@@ -129,15 +130,16 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.background.primary,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
-    padding: 32,
+    paddingHorizontal: 32,
+    paddingVertical: 24,
   },
   header: {
     alignItems: 'center',
@@ -146,84 +148,73 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.text.primary,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 18,
-    color: '#666',
+    color: theme.text.secondary,
     textAlign: 'center',
   },
   form: {
     marginBottom: 32,
   },
-  formTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.background.surface,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: theme.border.secondary,
     borderRadius: 12,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     fontSize: 16,
+    color: theme.text.primary,
     marginBottom: 16,
   },
-  signInButton: {
-    backgroundColor: '#007AFF',
+  primaryButton: {
+    backgroundColor: theme.action.primary.background,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: theme.special.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  signInButtonText: {
-    color: '#fff',
+  primaryButtonText: {
+    color: theme.action.primary.text,
     fontSize: 18,
     fontWeight: '600',
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#ddd',
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 16,
-    color: '#999',
-  },
-  guestButton: {
-    backgroundColor: '#fff',
+  secondaryButton: {
+    backgroundColor: theme.action.secondary.background,
     borderWidth: 2,
-    borderColor: '#007AFF',
+    borderColor: theme.action.secondary.background,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 32,
+    shadowColor: theme.special.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  guestButtonText: {
-    color: '#007AFF',
+  secondaryButtonText: {
+    color: theme.text.primary,
     fontSize: 18,
     fontWeight: '600',
   },
   buttonDisabled: {
     opacity: 0.6,
   },
-  info: {
+  footer: {
     alignItems: 'center',
   },
-  infoText: {
+  footerText: {
     fontSize: 14,
-    color: '#666',
+    color: theme.text.muted,
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: 8,
   },
 });

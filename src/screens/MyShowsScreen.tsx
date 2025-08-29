@@ -16,15 +16,17 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { getShows, removeShow, hydrateMissingFields, toggleFavorite, loadSortConfig, saveSortConfig } from '../store/localShows';
 import { useAuth } from '../store/auth';
 import { ShowLite, SortConfig } from '../types';
-import { getStatusColors, normalizeStatus } from '../utils/status';
+import { getStatusType } from '../utils/status';
 import { sortShows } from '../utils/sorting';
 import FilterBar from '../components/FilterBar';
 import SortBar from '../components/SortBar';
 import { RootStackParamList } from '../utils/navigation';
+import { useTheme } from '../theme/ThemeProvider';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MyShows'>;
 
 export default function MyShowsScreen() {
+  const { theme } = useTheme();
   const [shows, setShows] = useState<ShowLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -46,7 +48,7 @@ export default function MyShowsScreen() {
   
   // Refs to track Swipeable instances for each row
   const swipeableRefs = useRef<{ [tmdbId: number]: Swipeable | null }>({});
-  
+
   const navigation = useNavigation<NavigationProp>();
   const { isGuest } = useAuth();
 
@@ -217,10 +219,10 @@ export default function MyShowsScreen() {
     <TouchableOpacity
       accessibilityLabel="Delete show"
       onPress={onDelete}
-      style={styles.rightAction}
+      style={[styles.rightAction, { backgroundColor: theme.action.destructive.background }]}
       activeOpacity={0.8}
     >
-      <Text style={styles.rightActionText}>Delete</Text>
+      <Text style={[styles.rightActionText, { color: theme.action.destructive.text }]}>Delete</Text>
     </TouchableOpacity>
   );
 
@@ -245,18 +247,18 @@ export default function MyShowsScreen() {
           }
         }
       }}
-      style={styles.leftAction}
+      style={[styles.leftAction, { backgroundColor: theme.action.favorite.background }]}
       activeOpacity={0.8}
     >
-      <Text style={styles.leftActionText}>
+      <Text style={[styles.leftActionText, { color: theme.action.favorite.text }]}>
         {show.isFavorite ? '★' : '☆'}
       </Text>
     </TouchableOpacity>
   );
 
   const renderShow = useCallback(({ item }: { item: ShowLite }) => {
-    const normalized = normalizeStatus(item.status);
-    const statusStyle = normalized ? getStatusColors(normalized) : null;
+    const statusType = getStatusType(item.status);
+    const statusColors = statusType ? theme.status[statusType] : null;
     
     return (
       <Swipeable
@@ -269,7 +271,7 @@ export default function MyShowsScreen() {
         renderRightActions={() => renderRightActions(() => handleDeleteShow(item))}
       >
         <TouchableOpacity
-          style={styles.showItem}
+          style={[styles.showItem, { backgroundColor: theme.background.card, shadowColor: theme.special.shadow }]}
           onPress={() => handleShowPress(item)}
         >
           <Image
@@ -282,25 +284,25 @@ export default function MyShowsScreen() {
           <View style={styles.showInfo}>
             {/* Favorite star marker */}
             {item.isFavorite && (
-              <View style={styles.favoriteMarker}>
-                <Text style={styles.favoriteStar}>★</Text>
+              <View style={[styles.favoriteMarker, { backgroundColor: theme.special.favorite }]}>
+                <Text style={[styles.favoriteStar, { color: theme.text.inverse }]}>★</Text>
               </View>
             )}
             
-            <Text style={styles.showTitle} numberOfLines={2}>
+            <Text style={[styles.showTitle, { color: theme.text.primary }]} numberOfLines={2}>
               {item.title}
             </Text>
             
             {/* Only render status pill if status is truthy and not "unknown" (case-insensitive) */}
-            {!!normalized && normalized.toLowerCase() !== 'unknown' && statusStyle && (
-              <View style={[styles.statusContainer, { backgroundColor: statusStyle.backgroundColor }]}>
-                <Text style={[styles.statusText, { color: statusStyle.textColor }]}>{normalized}</Text>
+            {statusType && statusColors && (
+              <View style={[styles.statusContainer, { backgroundColor: statusColors.background }]}>
+                <Text style={[styles.statusText, { color: statusColors.text }]}>{item.status}</Text>
               </View>
             )}
             
             {/* Show one compact line: Next air date takes priority, then last air date */}
             {(item.nextAirDate || item.lastAirDate) && (
-              <Text style={styles.airDate}>
+              <Text style={[styles.airDate, { color: theme.text.secondary }]}>
                 {item.nextAirDate 
                   ? `Next: ${new Date(item.nextAirDate).toLocaleDateString()}`
                   : `Last: ${new Date(item.lastAirDate!).toLocaleDateString()}`
@@ -310,61 +312,61 @@ export default function MyShowsScreen() {
             
             {/* Show network as small secondary text under the date line */}
             {item.network && (
-              <Text style={styles.network}>{item.network}</Text>
+              <Text style={[styles.network, { color: theme.text.muted }]}>{item.network}</Text>
             )}
           </View>
         </TouchableOpacity>
       </Swipeable>
     );
-  }, [handleDeleteShow, handleShowPress, renderLeftActions, renderRightActions]);
+  }, [handleDeleteShow, handleShowPress, renderLeftActions, renderRightActions, theme]);
 
   const keyExtractor = useCallback((item: ShowLite) => item.tmdbId.toString(), []);
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading your shows...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.background.primary }]}>
+        <ActivityIndicator size="large" color={theme.action.primary.background} />
+        <Text style={[styles.loadingText, { color: theme.text.secondary }]}>Loading your shows...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
+      <View style={[styles.header, { backgroundColor: theme.background.surface, borderBottomColor: theme.border.primary }]}>
         <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-          <Text style={styles.headerLink}>Settings</Text>
+          <Text style={[styles.headerLink, { color: theme.action.primary.background }]}>Settings</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Shows</Text>
+        <Text style={[styles.headerTitle, { color: theme.text.primary }]}>My Shows</Text>
         <TouchableOpacity onPress={() => navigation.navigate('AddShow')}>
-          <Text style={styles.headerLink}>Add</Text>
+          <Text style={[styles.headerLink, { color: theme.action.primary.background }]}>Add</Text>
         </TouchableOpacity>
       </View>
 
       {shows.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No shows yet</Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={[styles.emptyTitle, { color: theme.text.primary }]}>No shows yet</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.text.secondary }]}>
             Start by adding your favorite TV shows
           </Text>
           <TouchableOpacity
-            style={styles.emptyAddButton}
+            style={[styles.emptyAddButton, { backgroundColor: theme.action.primary.background }]}
             onPress={() => navigation.navigate('AddShow')}
           >
-            <Text style={styles.emptyAddButtonText}>Add Your First Show</Text>
+            <Text style={[styles.emptyAddButtonText, { color: theme.action.primary.text }]}>Add Your First Show</Text>
           </TouchableOpacity>
         </View>
       ) : filtered.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No shows match filters</Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={[styles.emptyTitle, { color: theme.text.primary }]}>No shows match filters</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.text.secondary }]}>
             Try adjusting your filter criteria
           </Text>
           <TouchableOpacity
-            style={styles.emptyAddButton}
+            style={[styles.emptyAddButton, { backgroundColor: theme.action.primary.background }]}
             onPress={handleClearFilters}
           >
-            <Text style={styles.emptyAddButtonText}>Clear Filters</Text>
+            <Text style={[styles.emptyAddButtonText, { color: theme.action.primary.text }]}>Clear Filters</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -407,7 +409,6 @@ export default function MyShowsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   header: {
     flexDirection: 'row',
@@ -415,22 +416,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
   headerTitle: { fontSize: 18, fontWeight: '700' },
-  headerLink: { fontSize: 16, fontWeight: '600', color: '#007AFF' },
+  headerLink: { fontSize: 16, fontWeight: '600' },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#666',
   },
   emptyContainer: {
     flex: 1,
@@ -441,23 +438,19 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 16,
-    color: '#666',
     textAlign: 'center',
     marginBottom: 24,
   },
   emptyAddButton: {
-    backgroundColor: '#007AFF',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 25,
   },
   emptyAddButtonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -466,12 +459,10 @@ const styles = StyleSheet.create({
   },
   showItem: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
     marginHorizontal: 16,
     marginVertical: 8,
     padding: 16,
     borderRadius: 12,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -491,7 +482,6 @@ const styles = StyleSheet.create({
   showTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 8,
     lineHeight: 22,
   },
@@ -508,15 +498,12 @@ const styles = StyleSheet.create({
   },
   airDate: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 4,
   },
   network: {
     fontSize: 12,
-    color: '#999',
   },
   rightAction: {
-    backgroundColor: '#ff3b30',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -525,12 +512,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   rightActionText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
   leftAction: {
-    backgroundColor: '#ffd700', // Gold color for favorites
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 15,
@@ -539,20 +524,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   leftActionText: {
-    fontSize: 24, // Larger font for the star
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
   },
   favoriteMarker: {
     position: 'absolute',
     top: 8,
     right: 8,
-    backgroundColor: '#ffd700', // Gold color for favorites
     borderRadius: 10,
     padding: 4,
   },
   favoriteStar: {
     fontSize: 20,
-    color: '#333',
   },
 });

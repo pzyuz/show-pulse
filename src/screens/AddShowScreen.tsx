@@ -2,49 +2,45 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
-  FlatList,
+  TextInput,
   TouchableOpacity,
+  FlatList,
   Image,
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { searchShows, getShowDetails, TMDBSearchTVResult } from '../services/tmdb';
-import { upsertShow, updateShowPartial, getShows } from '../store/localShows';
 import { useAuth } from '../store/auth';
-import { ShowLite } from '../types';
-// removed useFocusEffect-based debounce
+import { useTheme } from '../theme/ThemeProvider';
+import { searchShows, getShowDetails } from '../services/tmdb';
+import { upsertShow, getShows } from '../store/localShows';
+import { ShowLite, TMDBSearchResult } from '../types';
 
 export default function AddShowScreen() {
+  const navigation = useNavigation();
+  const { isGuest } = useAuth();
+  const { theme } = useTheme();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
-  const navigation = useNavigation();
-  const { isGuest } = useAuth();
-  const queryClient = useQueryClient();
 
-  // (Removed external key check; tmdb.ts throws a clear error if truly missing)
-
-  // Fetch current shows to detect duplicates
-  useFocusEffect(
-    React.useCallback(() => {
-      const loadCurrentShows = async () => {
-        if (isGuest) {
-          try {
-            const shows = await getShows();
-            setAddedIds(new Set(shows.map(s => s.tmdbId)));
-          } catch (error) {
-            console.warn('Failed to load current shows:', error);
-          }
-        }
-      };
-      
-      loadCurrentShows();
-    }, [isGuest])
-  );
+  // Load existing shows to populate addedIds
+  useEffect(() => {
+    const loadExistingShows = async () => {
+      try {
+        const existingShows = await getShows();
+        const existingIds = new Set(existingShows.map(show => show.tmdbId));
+        setAddedIds(existingIds);
+      } catch (error) {
+        console.warn('Failed to load existing shows:', error);
+      }
+    };
+    
+    loadExistingShows();
+  }, []);
 
   // Debounce search query on input change
   useEffect(() => {
@@ -61,25 +57,9 @@ export default function AddShowScreen() {
     retry: 0,
   });
 
-  const handleShowPress = (show: TMDBSearchTVResult['results'][0]) => {
-    if (addedIds.has(show.id)) {
-      // Navigate to details for already-added shows
-      navigation.navigate('ShowDetails' as never, { tmdbId: show.id } as never);
-    } else {
-      // Add new show
-      handleAddShow(show);
-    }
-  };
-
-  const handleAddShow = async (show: TMDBSearchTVResult['results'][0]) => {
+  const handleAddShow = async (show: TMDBSearchResult) => {
     try {
       if (isGuest) {
-        // Check if already added
-        if (addedIds.has(show.id)) {
-          Alert.alert('Already Added', 'This show is already in your list.');
-          return;
-        }
-
         const newShow: ShowLite = {
           tmdbId: show.id,
           title: show.name,
@@ -88,14 +68,12 @@ export default function AddShowScreen() {
           nextAirDate: undefined,
           lastAirDate: undefined,
           network: undefined,
-          genres: undefined,
-          isFavorite: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
         await upsertShow(newShow);
         
-        // Update local state to reflect the addition
+        // Update addedIds to include the newly added show
         setAddedIds(prev => new Set([...prev, show.id]));
         
         // Warm details cache in background so Details screen opens instantly
@@ -104,27 +82,6 @@ export default function AddShowScreen() {
           queryFn: () => getShowDetails(show.id),
         });
 
-        // Fetch full details to enrich the show data
-        try {
-          const details = await getShowDetails(show.id);
-          const enrichedShow: ShowLite = {
-            ...newShow,
-            status: details.status || undefined,
-            nextAirDate: details.next_episode_to_air?.air_date || undefined,
-            lastAirDate: details.last_episode_to_air?.air_date || undefined,
-            firstAirDate: details.first_air_date || undefined,
-            network: details.networks?.[0]?.name || undefined,
-            genres: details.genres?.map(g => g.name) || undefined,
-            voteAverage: details.vote_average || undefined,
-          };
-          
-          // Update the stored show with enriched data
-          await upsertShow(enrichedShow);
-        } catch (error) {
-          // Silently ignore enrichment errors - the basic show data is already saved
-          console.warn('Failed to enrich show data:', error);
-        }
-        
         // go back to list
         navigation.goBack();
       } else {
@@ -135,68 +92,86 @@ export default function AddShowScreen() {
     }
   };
 
-  const renderSearchResult = ({ item }: { item: TMDBSearchTVResult['results'][0] }) => {
+  const handleShowPress = (show: TMDBSearchResult) => {
+    if (addedIds.has(show.id)) {
+      // Navigate to details if already added
+      navigation.navigate('ShowDetails' as never, { tmdbId: show.id } as never);
+    } else {
+      // Add the show if not already added
+      handleAddShow(show);
+    }
+  };
+
+  const renderSearchResult = ({ item }: { item: TMDBSearchResult }) => {
     const alreadyAdded = addedIds.has(item.id);
     
     return (
-      <TouchableOpacity
-        style={styles.searchResult}
-        onPress={() => handleShowPress(item)}
-        accessibilityLabel={alreadyAdded ? `${item.name} - Already added. Opens details` : `${item.name} - Add to your list`}
-        accessibilityRole="button"
-      >
-        <Image
-          source={{
-            uri: item.poster_path
-              ? `https://image.tmdb.org/t/p/w200${item.poster_path}`
-              : 'https://via.placeholder.com/200x300?text=No+Poster',
-          }}
-          style={styles.poster}
-          resizeMode="cover"
-        />
-        <View style={styles.resultInfo}>
-          <View style={styles.titleRow}>
-            <Text style={styles.showTitle}>{item.name}</Text>
-            {alreadyAdded && (
-              <View style={styles.alreadyAddedBadge}>
-                <Text style={styles.alreadyAddedText}>✓ Already added</Text>
-              </View>
+      <View style={styles.searchResult}>
+        <TouchableOpacity
+          style={styles.showItem}
+          onPress={() => handleShowPress(item)}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.name}${alreadyAdded ? ', already added, tap to view details' : ', tap to add to my shows'}`}
+        >
+          {item.poster_path ? (
+            <Image
+              source={{ uri: `https://image.tmdb.org/t/p/w92${item.poster_path}` }}
+              style={styles.poster}
+              accessibilityLabel={`Poster for ${item.name}`}
+            />
+          ) : (
+            <View style={styles.posterPlaceholder}>
+              <Text style={styles.posterPlaceholderText}>📺</Text>
+            </View>
+          )}
+          
+          <View style={styles.showInfo}>
+            <Text style={styles.showTitle} numberOfLines={2}>
+              {item.name}
+            </Text>
+            {item.first_air_date && (
+              <Text style={styles.showYear}>
+                {new Date(item.first_air_date).getFullYear()}
+              </Text>
+            )}
+            {item.overview && (
+              <Text style={styles.showOverview} numberOfLines={2}>
+                {item.overview}
+              </Text>
             )}
           </View>
-          <Text style={styles.showDate}>
-            {item.first_air_date
-              ? `First aired: ${new Date(item.first_air_date).getFullYear()}`
-              : 'Release date unknown'}
-          </Text>
-          <Text style={styles.showOverview} numberOfLines={2}>
-            {item.overview || 'No description available'}
-          </Text>
-        </View>
-      </TouchableOpacity>
+
+          {alreadyAdded && (
+            <View style={styles.alreadyAddedBadge}>
+              <Text style={styles.alreadyAddedText}>✓ Added</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
     );
   };
 
+  const styles = createStyles(theme);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Add New Show</Text>
-      
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search for TV shows..."
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        autoFocus
-      />
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search for TV shows..."
+          placeholderTextColor={theme.text.muted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoFocus
+          returnKeyType="search"
+          accessibilityLabel="Search for TV shows"
+          accessibilityRole="search"
+        />
+      </View>
 
       {/* (Key banner removed to avoid false alarms) */}
 
-      {isLoading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Searching...</Text>
-        </View>
-      )}
-
+      {/* Error UI */}
       {error && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>
@@ -207,18 +182,22 @@ export default function AddShowScreen() {
             onPress={() => {
               // re-trigger the query for the current debounced term
               queryClient.invalidateQueries({ queryKey: ['searchShows', debouncedQuery] });
-            }}>
+            }}
+          >
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {searchResults && searchResults.results.length === 0 && debouncedQuery.length > 1 && (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No shows found for "{debouncedQuery}"</Text>
+      {/* Loading state */}
+      {isLoading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.action.primary.background} />
+          <Text style={styles.loadingText}>Searching...</Text>
         </View>
       )}
 
+      {/* Search results */}
       {searchResults && searchResults.results.length > 0 && (
         <FlatList
           data={searchResults.results}
@@ -229,10 +208,22 @@ export default function AddShowScreen() {
         />
       )}
 
-      {!debouncedQuery && (
-        <View style={styles.placeholderContainer}>
-          <Text style={styles.placeholderText}>
-            Start typing to search for TV shows...
+      {/* Empty state */}
+      {searchResults && searchResults.results.length === 0 && debouncedQuery.length > 0 && (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No shows found</Text>
+          <Text style={styles.emptySubtitle}>
+            Try searching for a different title or check your spelling.
+          </Text>
+        </View>
+      )}
+
+      {/* Initial state */}
+      {!searchResults && !isLoading && debouncedQuery.length === 0 && (
+        <View style={styles.initialContainer}>
+          <Text style={styles.initialTitle}>Search for TV Shows</Text>
+          <Text style={styles.initialSubtitle}>
+            Start typing to search for shows to add to your list.
           </Text>
         </View>
       )}
@@ -240,129 +231,170 @@ export default function AddShowScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 16,
+    backgroundColor: theme.background.primary,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
+  searchContainer: {
+    backgroundColor: theme.background.surface,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border.primary,
   },
   searchInput: {
+    backgroundColor: theme.background.secondary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: theme.text.primary,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
+    borderColor: theme.border.secondary,
   },
   errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    backgroundColor: theme.status.danger.background,
+    margin: 16,
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
   },
   errorText: {
+    color: theme.status.danger.text,
     fontSize: 16,
-    color: '#ff3b30',
-    marginBottom: 10,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 12,
   },
   retryButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.status.danger.text,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#fff',
+    color: theme.status.danger.background,
     fontSize: 16,
     fontWeight: '600',
   },
-  emptyContainer: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 32,
   },
-  emptyText: {
+  loadingText: {
+    marginTop: 16,
     fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-  },
-  placeholderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    fontSize: 16,
-    color: '#999',
-    textAlign: 'center',
+    color: theme.text.secondary,
   },
   resultsList: {
     flex: 1,
   },
   searchResult: {
+    backgroundColor: theme.background.surface,
+    marginHorizontal: 16,
+    marginVertical: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
+  },
+  showItem: {
     flexDirection: 'row',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    padding: 16,
     alignItems: 'center',
   },
   poster: {
     width: 60,
     height: 90,
     borderRadius: 8,
-    marginRight: 12,
+    marginRight: 16,
   },
-  resultInfo: {
-    flex: 1,
-  },
-  titleRow: {
-    flexDirection: 'row',
+  posterPlaceholder: {
+    width: 60,
+    height: 90,
+    borderRadius: 8,
+    marginRight: 16,
+    backgroundColor: theme.background.secondary,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 4,
-    flexWrap: 'wrap',
+    borderWidth: 1,
+    borderColor: theme.border.secondary,
+  },
+  posterPlaceholderText: {
+    fontSize: 24,
+    color: theme.text.muted,
+  },
+  showInfo: {
+    flex: 1,
+    marginRight: 16,
   },
   showTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
+    color: theme.text.primary,
     marginBottom: 4,
-    flex: 1,
-    marginRight: 8,
+    lineHeight: 22,
   },
-  alreadyAddedBadge: {
-    backgroundColor: '#e0e0e0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  alreadyAddedText: {
-    fontSize: 12,
-    color: '#333',
-    fontWeight: '500',
-  },
-  showDate: {
+  showYear: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    color: theme.text.secondary,
+    marginBottom: 8,
   },
   showOverview: {
     fontSize: 14,
-    color: '#999',
-    lineHeight: 20,
+    color: theme.text.secondary,
+    lineHeight: 18,
+  },
+
+  alreadyAddedBadge: {
+    backgroundColor: theme.ui.chip.default.background,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.ui.chip.default.border,
+  },
+  alreadyAddedText: {
+    color: theme.ui.chip.default.text,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: theme.text.primary,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: theme.text.secondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  initialContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  initialTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: theme.text.primary,
+    marginBottom: 12,
+  },
+  initialSubtitle: {
+    fontSize: 16,
+    color: theme.text.secondary,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });

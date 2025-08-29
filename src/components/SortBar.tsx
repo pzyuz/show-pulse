@@ -6,6 +6,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SortKey, SortDirection, SortConfig } from '../types';
+import { useTheme } from '../theme/ThemeProvider';
 
 interface SortBarProps {
   sortConfig: SortConfig;
@@ -24,6 +25,8 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
 ];
 
 export default function SortBar({ sortConfig, onSortConfigChange, showSortBar, setShowSortBar }: SortBarProps) {
+  const { theme } = useTheme();
+
   const handleSortKeyChange = (key: SortKey) => {
     // For nextAirDate, default to ascending (soonest first)
     // For others, keep current direction or default to descending
@@ -104,6 +107,8 @@ export default function SortBar({ sortConfig, onSortConfigChange, showSortBar, s
     
     return summary;
   };
+
+  const styles = createStyles(theme);
 
   return (
     <View style={styles.container}>
@@ -206,11 +211,11 @@ export default function SortBar({ sortConfig, onSortConfigChange, showSortBar, s
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.background.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: theme.border.primary,
   },
   header: {
     flexDirection: 'row',
@@ -220,13 +225,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   toggleButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.action.primary.background,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
   },
   toggleButtonText: {
-    color: '#fff',
+    color: theme.action.primary.text,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -237,12 +242,12 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 12,
-    color: '#666',
+    color: theme.text.secondary,
     fontWeight: '500',
   },
   summaryText: {
     fontSize: 14,
-    color: '#333',
+    color: theme.text.primary,
     fontWeight: '600',
     textAlign: 'right',
   },
@@ -250,14 +255,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: theme.border.primary,
   },
   section: {
     marginTop: 16,
   },
   sectionLabel: {
     fontSize: 14,
-    color: '#666',
+    color: theme.text.secondary,
     marginBottom: 8,
     fontWeight: '500',
   },
@@ -270,34 +275,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: theme.ui.chip.default.background,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: theme.ui.chip.default.border,
   },
   chipActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: theme.ui.chip.selected.background,
+    borderColor: theme.ui.chip.selected.border,
   },
   chipText: {
     fontSize: 12,
-    color: '#666',
+    color: theme.ui.chip.default.text,
     fontWeight: '500',
   },
   chipTextActive: {
-    color: '#fff',
+    color: theme.ui.chip.selected.text,
   },
   directionButton: {
     alignSelf: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: theme.action.secondary.background,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: theme.border.secondary,
   },
   directionButtonText: {
     fontSize: 14,
-    color: '#333',
+    color: theme.action.secondary.text,
     fontWeight: '500',
   },
   favoritesToggle: {
@@ -305,20 +310,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: theme.ui.toggle.inactive.background,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: theme.ui.toggle.inactive.border,
   },
   favoritesToggleActive: {
-    backgroundColor: '#ffd700',
-    borderColor: '#ffd700',
+    backgroundColor: theme.ui.toggle.active.background,
+    borderColor: theme.ui.toggle.active.border,
   },
   favoritesToggleText: {
     fontSize: 14,
-    color: '#666',
+    color: theme.ui.toggle.inactive.text,
     fontWeight: '500',
   },
   favoritesToggleTextActive: {
-    color: '#333',
+    color: theme.ui.toggle.active.text,
   },
 });

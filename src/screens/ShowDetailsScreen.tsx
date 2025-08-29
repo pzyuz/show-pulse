@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -7,16 +7,16 @@ import {
   Image,
   TouchableOpacity,
   Alert,
+  Linking,
   ActivityIndicator,
 } from 'react-native';
-import { Linking } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../store/auth';
+import { useTheme } from '../theme/ThemeProvider';
 import { getShowDetails } from '../services/tmdb';
 import { removeShow } from '../store/localShows';
-import { useAuth } from '../store/auth';
-import { TMDBShow } from '../types';
-import { getStatusColors, normalizeStatus } from '../utils/status';
+import { normalizeStatus, getStatusType } from '../utils/status';
 
 type RouteParams = {
   tmdbId: number;
@@ -25,20 +25,19 @@ type RouteParams = {
 export default function ShowDetailsScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { tmdbId } = route.params as RouteParams;
   const { isGuest } = useAuth();
-  const [removing, setRemoving] = useState(false);
+  const { theme } = useTheme();
+  const { tmdbId } = route.params as RouteParams;
 
   const { data: show, isLoading, error } = useQuery({
     queryKey: ['showDetails', tmdbId],
     queryFn: () => getShowDetails(tmdbId),
-    enabled: !!tmdbId,
   });
 
-  const handleRemoveShow = async () => {
+  const handleRemoveShow = () => {
     Alert.alert(
       'Remove Show',
-      `Are you sure you want to remove "${show?.name}" from your list?`,
+      'Are you sure you want to remove this show from your list?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -46,14 +45,14 @@ export default function ShowDetailsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              setRemoving(true);
-              await removeShow(tmdbId);
-              Alert.alert('Success', 'Show removed from your list');
-              navigation.goBack();
+              if (isGuest) {
+                await removeShow(tmdbId);
+                navigation.goBack();
+              } else {
+                // auth path TBD
+              }
             } catch (error) {
               Alert.alert('Error', 'Failed to remove show. Please try again.');
-            } finally {
-              setRemoving(false);
             }
           },
         },
@@ -61,10 +60,40 @@ export default function ShowDetailsScreen() {
     );
   };
 
+  const handleImdbPress = () => {
+    if (show?.external_ids?.imdb_id) {
+      const url = `https://www.imdb.com/title/${show.external_ids.imdb_id}/`;
+      Linking.openURL(url).catch(() => {
+        Alert.alert('Error', 'Could not open IMDb link.');
+      });
+    }
+  };
+
+  const handleMetacriticPress = () => {
+    if (show?.name) {
+      const slugifyTitle = (title: string) => {
+        return title
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '')
+          .replace(/\s+/g, '-')
+          .trim();
+      };
+      
+      const slug = slugifyTitle(show.name);
+      const url = `https://www.metacritic.com/tv/${slug}/`;
+      
+      Linking.openURL(url).catch(() => {
+        Alert.alert('Error', 'Could not open Metacritic link.');
+      });
+    }
+  };
+
+  const styles = createStyles(theme);
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={theme.action.primary.background} />
         <Text style={styles.loadingText}>Loading show details...</Text>
       </View>
     );
@@ -75,7 +104,7 @@ export default function ShowDetailsScreen() {
       <View style={styles.errorContainer}>
         <Text style={styles.errorTitle}>Failed to load show</Text>
         <Text style={styles.errorText}>
-          {error?.message || 'Unable to fetch show details'}
+          {(error as Error)?.message || 'Unable to load show details. Please try again.'}
         </Text>
         <TouchableOpacity
           style={styles.retryButton}
@@ -87,252 +116,221 @@ export default function ShowDetailsScreen() {
     );
   }
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'Unknown';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const normalizedStatus = normalizeStatus(show?.status);
-  const statusColors = normalizedStatus ? getStatusColors(normalizedStatus) : undefined;
-  const imdbId = show?.external_ids?.imdb_id ?? null;
-  const showName = show?.name?.trim();
-  const slugifyTitle = (name: string): string => {
-    const withoutParens = name.replace(/\s*\([^)]*\)\s*/g, ' ');
-    return withoutParens
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  };
-  const metacriticSlug = showName ? slugifyTitle(showName) : undefined;
+  const normalizedStatus = normalizeStatus(show.status);
+  const statusType = getStatusType(show.status);
+  const statusColors = theme.status[statusType];
 
   return (
     <ScrollView style={styles.container}>
+      {/* Header with poster and basic info */}
       <View style={styles.header}>
-        <Image
-          source={{
-            uri: show.poster_path
-              ? `https://image.tmdb.org/t/p/w500${show.poster_path}`
-              : 'https://via.placeholder.com/500x750?text=No+Poster',
-          }}
-          style={styles.poster}
-          resizeMode="cover"
-        />
+        {show.poster_path ? (
+          <Image
+            source={{ uri: `https://image.tmdb.org/t/p/w300${show.poster_path}` }}
+            style={styles.poster}
+            accessibilityLabel={`Poster for ${show.name}`}
+          />
+        ) : (
+          <View style={styles.posterPlaceholder}>
+            <Text style={styles.posterPlaceholderText}>📺</Text>
+          </View>
+        )}
         
         <View style={styles.headerInfo}>
           <Text style={styles.title}>{show.name}</Text>
           
-          {!!normalizedStatus && normalizedStatus.toLowerCase() !== 'unknown' && statusColors && (
-            <View style={[styles.statusBadge, { backgroundColor: statusColors.backgroundColor }]}>
-              <Text style={[styles.statusText, { color: statusColors.textColor }]}>{normalizedStatus}</Text>
+          {normalizedStatus && (
+            <View style={[styles.statusPill, { backgroundColor: statusColors.background }]}>
+              <Text style={[styles.statusText, { color: statusColors.text }]}>
+                {normalizedStatus}
+              </Text>
             </View>
           )}
           
-          {show.first_air_date && (
-            <Text style={styles.airDate}>
-              First aired: {formatDate(show.first_air_date)}
-            </Text>
-          )}
-          
           {show.networks && show.networks.length > 0 && (
-            <Text style={styles.network}>
-              Network: {show.networks[0].name}
-            </Text>
+            <Text style={styles.network}>{show.networks[0].name}</Text>
           )}
           
-          {(show.number_of_seasons ?? 0) > 0 ? (
-            <Text style={styles.seasons}>
-              {show.number_of_seasons} season{show.number_of_seasons !== 1 ? 's' : ''}
-            </Text>
-          ) : null}
+          {(show.vote_average ?? 0) > 0 && (
+            <View style={styles.ratingContainer}>
+              <Text style={styles.ratingLabel}>Rating:</Text>
+              <Text style={styles.ratingValue}>⭐ {show.vote_average.toFixed(1)}</Text>
+            </View>
+          )}
         </View>
       </View>
 
-      {(imdbId || metacriticSlug) && (
-        <View style={styles.linksRow}>
-          {imdbId ? (
-            <TouchableOpacity
-              style={[styles.linkPill, styles.linkPillImdb]}
-              onPress={() => Linking.openURL(`https://www.imdb.com/title/${imdbId}/`)}
-              accessibilityRole="button"
-              accessibilityLabel="Open on IMDb"
-              activeOpacity={0.8}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={[styles.linkPillText, styles.linkPillTextImdb]}>IMDb</Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {metacriticSlug ? (
-            <TouchableOpacity
-              style={[styles.linkPill, styles.linkPillMc]}
-              onPress={() => {
-                const url = `https://www.metacritic.com/tv/${metacriticSlug}/`;
-                Linking.openURL(url).catch(() => {
-                  Alert.alert('Error', 'Could not open Metacritic link.');
-                });
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Open on Metacritic"
-              activeOpacity={0.8}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={[styles.linkPillText, styles.linkPillTextMc]}>MC</Text>
-            </TouchableOpacity>
-          ) : null}
+      {/* External links */}
+      {(show.external_ids?.imdb_id || show.name) && (
+        <View style={styles.linksSection}>
+          <Text style={styles.sectionTitle}>More Information</Text>
+          <View style={styles.linksRow}>
+            {show.external_ids?.imdb_id && (
+              <TouchableOpacity
+                style={[styles.linkPill, { backgroundColor: '#F5C518' }]}
+                onPress={handleImdbPress}
+                accessibilityRole="button"
+                accessibilityLabel="Open on IMDb"
+              >
+                <Text style={[styles.linkPillText, { color: '#000000' }]}>IMDb</Text>
+              </TouchableOpacity>
+            )}
+            
+            {show.name && (
+              <TouchableOpacity
+                style={[styles.linkPill, { backgroundColor: '#2A2A2A' }]}
+                onPress={handleMetacriticPress}
+                accessibilityRole="button"
+                accessibilityLabel="Search on Metacritic"
+              >
+                <Text style={[styles.linkPillText, { color: '#FFFFFF' }]}>MC</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
 
-      {show.overview && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Overview</Text>
-          <Text style={styles.overview}>{show.overview}</Text>
-        </View>
-      )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Air Dates</Text>
+      {/* Show details */}
+      <View style={styles.detailsSection}>
+        <Text style={styles.sectionTitle}>Show Details</Text>
         
-        {show.next_episode_to_air ? (
-          <View style={styles.dateItem}>
-            <Text style={styles.dateLabel}>Next Episode:</Text>
-            <Text style={styles.dateValue}>
-              {formatDate(show.next_episode_to_air.air_date)}
+        {show.overview && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Overview</Text>
+            <Text style={styles.detailValue}>{show.overview}</Text>
+          </View>
+        )}
+        
+        {show.first_air_date && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>First Aired</Text>
+            <Text style={styles.detailValue}>
+              {new Date(show.first_air_date).toLocaleDateString()}
             </Text>
           </View>
-        ) : null}
+        )}
         
-        {show.last_episode_to_air ? (
-          <View style={styles.dateItem}>
-            <Text style={styles.dateLabel}>Last Episode:</Text>
-            <Text style={styles.dateValue}>
-              {formatDate(show.last_episode_to_air.air_date)}
+        {show.next_episode_to_air?.air_date && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Next Episode</Text>
+            <Text style={styles.detailValue}>
+              {new Date(show.next_episode_to_air.air_date).toLocaleDateString()}
             </Text>
           </View>
-        ) : null}
+        )}
         
-        {!show.next_episode_to_air && !show.last_episode_to_air && (
-          <Text style={styles.noDates}>No air dates available</Text>
+        {show.last_episode_to_air?.air_date && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Last Episode</Text>
+            <Text style={styles.detailValue}>
+              {new Date(show.last_episode_to_air.air_date).toLocaleDateString()}
+            </Text>
+          </View>
         )}
       </View>
 
-      {show.genres && show.genres.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Genres</Text>
-          <View style={styles.genresContainer}>
-            {show.genres.map((genre) => (
-              <View key={genre.id} style={styles.genreTag}>
-                <Text style={styles.genreText}>{genre.name}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {(show.vote_average ?? 0) > 0 ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Rating</Text>
-          <View style={styles.ratingContainer}>
-            <Text style={styles.ratingText}>
-              ⭐ {show.vote_average.toFixed(1)}/10
-            </Text>
-            <Text style={styles.ratingCount}>
-              ({show.vote_count} votes)
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      <View style={styles.actionsContainer}>
+      {/* Actions */}
+      <View style={styles.actionsSection}>
         <TouchableOpacity
-          style={[styles.removeButton, removing && styles.removeButtonDisabled]}
+          style={[styles.actionButton, styles.removeButton]}
           onPress={handleRemoveShow}
-          disabled={removing}
+          accessibilityRole="button"
+          accessibilityLabel="Remove show from my list"
         >
-          {removing ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.removeButtonText}>Remove from My Shows</Text>
-          )}
+          <Text style={styles.removeButtonText}>Remove from My Shows</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.background.primary,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.background.primary,
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 16,
     fontSize: 16,
-    color: '#666',
+    color: theme.text.secondary,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
     padding: 32,
+    backgroundColor: theme.background.primary,
   },
   errorTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 20,
+    fontWeight: '600',
+    color: theme.text.primary,
     marginBottom: 8,
   },
   errorText: {
     fontSize: 16,
-    color: '#666',
+    color: theme.text.secondary,
     textAlign: 'center',
     marginBottom: 24,
+    lineHeight: 22,
   },
   retryButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.action.primary.background,
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 25,
+    borderRadius: 8,
   },
   retryButtonText: {
-    color: '#fff',
+    color: theme.action.primary.text,
     fontSize: 16,
     fontWeight: '600',
   },
   header: {
+    backgroundColor: theme.background.surface,
+    padding: 20,
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    padding: 16,
-    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border.primary,
   },
   poster: {
     width: 120,
     height: 180,
     borderRadius: 12,
-    marginRight: 16,
+    marginRight: 20,
+  },
+  posterPlaceholder: {
+    width: 120,
+    height: 180,
+    borderRadius: 12,
+    marginRight: 20,
+    backgroundColor: theme.background.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.border.secondary,
+  },
+  posterPlaceholderText: {
+    fontSize: 48,
+    color: theme.text.muted,
   },
   headerInfo: {
     flex: 1,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.text.primary,
     marginBottom: 12,
     lineHeight: 28,
   },
-  statusBadge: {
+  statusPill: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -340,148 +338,97 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   statusText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  airDate: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    fontWeight: '600',
   },
   network: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  seasons: {
-    fontSize: 14,
-    color: '#666',
-  },
-  section: {
-    backgroundColor: '#fff',
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
-  },
-  overview: {
     fontSize: 16,
-    color: '#333',
-    lineHeight: 24,
-  },
-  dateItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  dateLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
-  },
-  dateValue: {
-    fontSize: 16,
-    color: '#666',
-  },
-  noDates: {
-    fontSize: 16,
-    color: '#999',
-    fontStyle: 'italic',
-  },
-  genresContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  genreTag: {
-    backgroundColor: '#e3f2fd',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  genreText: {
-    color: '#1976d2',
-    fontSize: 14,
-    fontWeight: '500',
+    color: theme.text.secondary,
+    marginBottom: 8,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  ratingText: {
+  ratingLabel: {
+    fontSize: 14,
+    color: theme.text.secondary,
+    marginRight: 8,
+  },
+  ratingValue: {
+    fontSize: 14,
+    color: theme.text.primary,
+    fontWeight: '500',
+  },
+  linksSection: {
+    backgroundColor: theme.background.surface,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border.primary,
+  },
+  sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: theme.text.primary,
+    marginBottom: 16,
   },
-  ratingCount: {
-    fontSize: 14,
-    color: '#666',
+  linksRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  actionsContainer: {
-    backgroundColor: '#fff',
-    padding: 16,
-    marginBottom: 32,
+  linkPill: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    shadowColor: theme.special.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
   },
-  removeButton: {
-    backgroundColor: '#ff3b30',
+  linkPillText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  detailsSection: {
+    backgroundColor: theme.background.surface,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border.primary,
+  },
+  detailRow: {
+    marginBottom: 20,
+  },
+  detailLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text.primary,
+    marginBottom: 8,
+  },
+  detailValue: {
+    fontSize: 16,
+    color: theme.text.secondary,
+    lineHeight: 22,
+  },
+  actionsSection: {
+    backgroundColor: theme.background.surface,
+    padding: 20,
+  },
+  actionButton: {
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
-  removeButtonDisabled: {
-    opacity: 0.6,
+  removeButton: {
+    backgroundColor: theme.status.danger.background,
+    borderWidth: 1,
+    borderColor: theme.status.danger.background,
   },
   removeButtonText: {
-    color: '#fff',
+    color: theme.status.danger.text,
     fontSize: 16,
     fontWeight: '600',
-  },
-  linksRow: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    marginTop: 8,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  linkPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  linkPillText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  linkPillImdb: {
-    backgroundColor: '#F5C518',
-  },
-  linkPillTextImdb: {
-    color: '#000000',
-  },
-  linkPillMc: {
-    backgroundColor: '#2A2A2A',
-  },
-  linkPillTextMc: {
-    color: '#FFFFFF',
   },
 });

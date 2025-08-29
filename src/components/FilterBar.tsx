@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = {
   options: { status: string[]; network: string[]; genres: string[] };
@@ -33,6 +34,7 @@ export default function FilterBar({
   showFilters,
   setShowFilters,
 }: Props) {
+  const { theme } = useTheme();
   const hasActiveFilters = filterStatus || filterNetwork || filterGenres.size > 0 || filterFavorites;
 
   const handleStatusToggle = (status: string) => {
@@ -58,9 +60,12 @@ export default function FilterBar({
   const handleClearFilters = () => {
     setFilterStatus(null);
     setFilterNetwork(null);
-    setFilterGenres(() => new Set());
+    setFilterGenres(() => new Set<string>());
     setFilterFavorites(false);
+    setShowFilters(false);
   };
+
+  const styles = createStyles(theme);
 
   return (
     <View style={styles.container}>
@@ -265,9 +270,9 @@ export default function FilterBar({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.background.surface,
     marginBottom: 16,
   },
   topRow: {
@@ -276,17 +281,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: theme.border.primary,
   },
   filtersButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.action.primary.background,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 16,
     marginRight: 12,
   },
   filtersButtonText: {
-    color: '#fff',
+    color: theme.action.primary.text,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -299,37 +304,42 @@ const styles = StyleSheet.create({
   filterBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e3f2fd',
+    backgroundColor: theme.ui.chip.default.background,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.ui.chip.default.border,
   },
   filterBadgeText: {
     fontSize: 12,
-    color: '#1976d2',
+    color: theme.ui.chip.default.text,
     marginRight: 4,
   },
   filterBadgeRemove: {
     fontSize: 14,
-    color: '#1976d2',
+    color: theme.text.muted,
     fontWeight: 'bold',
   },
   clearButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.action.secondary.background,
+    borderWidth: 1,
+    borderColor: theme.border.secondary,
   },
   clearButtonDisabled: {
-    opacity: 0.5,
+    backgroundColor: theme.border.subtle,
+    borderColor: theme.border.subtle,
   },
   clearButtonText: {
     fontSize: 12,
-    color: '#666',
+    color: theme.action.secondary.text,
     fontWeight: '500',
   },
   clearButtonTextDisabled: {
-    color: '#999',
+    color: theme.text.muted,
   },
   filterPanel: {
     padding: 16,
@@ -340,7 +350,7 @@ const styles = StyleSheet.create({
   filterSectionTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: theme.text.primary,
     marginBottom: 8,
   },
   chipRow: {
@@ -349,23 +359,23 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chip: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.ui.chip.default.background,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: theme.ui.chip.default.border,
   },
   chipSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: theme.ui.chip.selected.background,
+    borderColor: theme.ui.chip.selected.border,
   },
   chipText: {
     fontSize: 12,
-    color: '#666',
+    color: theme.ui.chip.default.text,
     fontWeight: '500',
   },
   chipTextSelected: {
-    color: '#fff',
+    color: theme.ui.chip.selected.text,
   },
 });

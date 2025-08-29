@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../store/auth';
+import { useTheme } from '../theme/ThemeProvider';
 import AuthScreen from '../screens/AuthScreen';
 import MyShowsScreen from '../screens/MyShowsScreen';
 import AddShowScreen from '../screens/AddShowScreen';
@@ -20,6 +21,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const NavigationContainerWrapper: React.FC = () => {
   const { user, isLoading } = useAuth();
+  const { theme } = useTheme();
 
   if (isLoading) {
     return null; // You could add a loading screen here
@@ -30,13 +32,15 @@ export const NavigationContainerWrapper: React.FC = () => {
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
-            backgroundColor: '#f4511e',
+            backgroundColor: theme.background.header,
           },
-          headerTintColor: '#fff',
+          headerTintColor: theme.text.inverse,
           headerTitleStyle: {
             fontWeight: 'bold',
+            color: theme.text.inverse,
           },
-          headerTitle: ''
+          headerTitle: '',
+          headerShadowVisible: false,
         }}
       >
         {!user ? (

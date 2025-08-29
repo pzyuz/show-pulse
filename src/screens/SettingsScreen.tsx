@@ -11,12 +11,14 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../store/auth';
+import { useTheme } from '../theme/ThemeProvider';
 import { getShows } from '../store/localShows';
 import { ShowLite } from '../types';
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
   const { user, isGuest, signOut } = useAuth();
+  const { theme, themeMode, setThemeMode } = useTheme();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -74,13 +76,17 @@ export default function SettingsScreen() {
             try {
               setDeleting(true);
               
-              // Clear AsyncStorage for guest mode
+              // Clear AsyncStorage for guest mode including theme preference
               const AsyncStorage = require('@react-native-async-storage/async-storage').default;
               await AsyncStorage.multiRemove([
                 '@sp:shows',
                 '@sp:guest_user',
-                '@sp:guest_shows'
+                '@sp:guest_shows',
+                '@sp:theme'
               ]);
+              
+              // Reset theme to light after clearing storage
+              setThemeMode('light');
 
               Alert.alert(
                 'Data Deleted',
@@ -123,6 +129,8 @@ export default function SettingsScreen() {
     );
   };
 
+  const styles = createStyles(theme);
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -130,6 +138,55 @@ export default function SettingsScreen() {
         <Text style={styles.subtitle}>
           {isGuest ? 'Guest Mode' : 'Authenticated User'}
         </Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Appearance</Text>
+        
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Theme</Text>
+            <Text style={styles.settingDescription}>
+              Choose between light and dark themes
+            </Text>
+          </View>
+          <View style={styles.themeToggle}>
+            <TouchableOpacity
+              style={[
+                styles.themeOption,
+                themeMode === 'light' && styles.themeOptionActive
+              ]}
+              onPress={() => setThemeMode('light')}
+              accessibilityRole="button"
+              accessibilityLabel="Light theme"
+              accessibilityState={{ selected: themeMode === 'light' }}
+            >
+              <Text style={[
+                styles.themeOptionText,
+                themeMode === 'light' && styles.themeOptionTextActive
+              ]}>
+                ☀️ Light
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.themeOption,
+                themeMode === 'dark' && styles.themeOptionActive
+              ]}
+              onPress={() => setThemeMode('dark')}
+              accessibilityRole="button"
+              accessibilityLabel="Dark theme"
+              accessibilityState={{ selected: themeMode === 'dark' }}
+            >
+              <Text style={[
+                styles.themeOptionText,
+                themeMode === 'dark' && styles.themeOptionTextActive
+              ]}>
+                🌙 Dark
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -145,8 +202,8 @@ export default function SettingsScreen() {
           <Switch
             value={notificationsEnabled}
             onValueChange={setNotificationsEnabled}
-            trackColor={{ false: '#e0e0e0', true: '#007AFF' }}
-            thumbColor={notificationsEnabled ? '#fff' : '#f4f3f4'}
+            trackColor={{ false: theme.border.secondary, true: theme.action.primary.background }}
+            thumbColor={notificationsEnabled ? theme.action.primary.text : theme.background.secondary}
           />
         </View>
 
@@ -160,8 +217,8 @@ export default function SettingsScreen() {
           <Switch
             value={emailNotifications}
             onValueChange={setEmailNotifications}
-            trackColor={{ false: '#e0e0e0', true: '#007AFF' }}
-            thumbColor={emailNotifications ? '#fff' : '#f4f3f4'}
+            trackColor={{ false: theme.border.secondary, true: theme.action.primary.background }}
+            thumbColor={emailNotifications ? theme.action.primary.text : theme.background.secondary}
           />
         </View>
       </View>
@@ -175,7 +232,7 @@ export default function SettingsScreen() {
           disabled={exporting}
         >
           {exporting ? (
-            <ActivityIndicator size="small" color="#007AFF" />
+            <ActivityIndicator size="small" color={theme.action.primary.background} />
           ) : (
             <Text style={styles.exportButtonText}>📤 Export My Data</Text>
           )}
@@ -187,7 +244,7 @@ export default function SettingsScreen() {
           disabled={deleting}
         >
           {deleting ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={theme.action.destructive.text} />
           ) : (
             <Text style={styles.deleteButtonText}>🗑️ Delete All Data</Text>
           )}
@@ -240,37 +297,37 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.background.primary,
   },
   header: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.background.surface,
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: theme.border.primary,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.text.primary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: theme.text.secondary,
     fontStyle: 'italic',
   },
   section: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.background.surface,
     marginTop: 16,
     padding: 20,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#333',
+    color: theme.text.primary,
     marginBottom: 16,
   },
   settingRow: {
@@ -279,7 +336,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: theme.border.subtle,
   },
   settingInfo: {
     flex: 1,
@@ -288,18 +345,42 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#333',
+    color: theme.text.primary,
     marginBottom: 4,
   },
   settingDescription: {
     fontSize: 14,
-    color: '#666',
+    color: theme.text.secondary,
     lineHeight: 20,
   },
   settingValue: {
     fontSize: 16,
-    color: '#007AFF',
+    color: theme.action.primary.background,
     fontWeight: '500',
+  },
+  themeToggle: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  themeOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: theme.ui.chip.default.background,
+    borderWidth: 1,
+    borderColor: theme.ui.chip.default.border,
+  },
+  themeOptionActive: {
+    backgroundColor: theme.ui.chip.selected.background,
+    borderColor: theme.ui.chip.selected.border,
+  },
+  themeOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.ui.chip.default.text,
+  },
+  themeOptionTextActive: {
+    color: theme.ui.chip.selected.text,
   },
   actionButton: {
     paddingVertical: 16,
@@ -309,32 +390,32 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   exportButton: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: theme.ui.chip.default.background,
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: theme.action.primary.background,
   },
   exportButtonText: {
-    color: '#007AFF',
+    color: theme.action.primary.background,
     fontSize: 16,
     fontWeight: '600',
   },
   deleteButton: {
-    backgroundColor: '#ffebee',
+    backgroundColor: theme.status.danger.background,
     borderWidth: 1,
-    borderColor: '#f44336',
+    borderColor: theme.status.danger.background,
   },
   deleteButtonText: {
-    color: '#f44336',
+    color: theme.status.danger.text,
     fontSize: 16,
     fontWeight: '600',
   },
   signOutButton: {
-    backgroundColor: '#fff3e0',
+    backgroundColor: theme.action.secondary.background,
     borderWidth: 1,
-    borderColor: '#ff9800',
+    borderColor: theme.action.secondary.background,
   },
   signOutButtonText: {
-    color: '#ff9800',
+    color: theme.text.primary,
     fontSize: 16,
     fontWeight: '600',
   },
